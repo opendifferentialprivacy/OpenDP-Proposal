@@ -1,10 +1,22 @@
-use opendp_proposal::components::{make_noisy_sum, make_clamp, make_mt_chain};
+use opendp_proposal::components::{make_noisy_sum, make_clamp, make_mt_chain, make_imputation, make_tt_chain};
+use opendp_proposal::{Properties, Domain};
 
 #[test]
 fn analysis_sum() -> Result<(), &'static str> {
-    let clamper = make_clamp(0.5, 1.5)?;
-    let noisy_sum = make_noisy_sum(0.5, 1.5, 0.5)?;
-    let chained = make_mt_chain(noisy_sum, clamper)?;
+
+    let input_properties = Properties {
+        has_nullity: true,
+        domain: None
+    };
+
+
+    let imputer = make_imputation(input_properties, 0.5, 1.5)?;
+    let clamper = make_clamp(imputer.output_properties.clone(), 0.5, 1.5)?;
+
+    let preprocessed = make_tt_chain(clamper, imputer)?;
+
+    let noisy_sum = make_noisy_sum(preprocessed.output_properties.clone(), 0.5)?;
+    let chained = make_mt_chain(noisy_sum, preprocessed)?;
 
     let num_records = 100;
     let data = (0..num_records).map(|_| 1f64).collect();

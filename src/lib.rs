@@ -12,19 +12,25 @@ type PrivacyLoss = f64;
 
 pub struct Measurement<T: Clone + Debug + PartialEq, U: Clone + Debug + PartialEq> {
     pub function: Box<dyn Fn(Vec<T>) -> Result<U, &'static str>>,
-    pub input_domain: Domain<T>,
+    pub input_properties: Properties<T>,
     pub privacy_loss: PrivacyLoss,
 }
 
 pub struct Transformation<T: Clone + Debug + PartialEq, U: Clone + Debug + PartialEq> {
     pub function: Box<dyn Fn(Vec<T>) -> Result<Vec<U>, &'static str>>,
-    pub input_domain: Domain<T>,
-    pub output_domain: Domain<U>,
+    pub input_properties: Properties<T>,
+    pub output_properties: Properties<U>,
     pub stability: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Domain<T: Clone + Debug + PartialEq> {
     Continuous { lower: Option<T>, upper: Option<T> },
-    Categorical { categories: Option<T> },
+    Categorical { categories: Option<Vec<T>> },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Properties<T: Clone + Debug + PartialEq> {
+    pub has_nullity: bool,
+    pub domain: Option<Domain<T>>
 }

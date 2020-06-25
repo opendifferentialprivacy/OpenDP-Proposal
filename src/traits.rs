@@ -50,20 +50,62 @@ impl_float_partial!(f64, f32);
 impl_int_partial!(u8, u16, u32, u64, u128);
 
 
-pub trait GenRand: Sized {
+pub trait GenUniform: Sized {
     fn sample_uniform(min: Self, max: Self) -> Result<Self, &'static str>;
+}
+
+pub trait GenLaplace: GenUniform {
     fn sample_laplace(shift: Self, scale: Self) -> Result<Self, &'static str>;
 }
 
-// No attempt has been made to make this noise remotely secure.
-impl GenRand for f64 {
-    fn sample_uniform(min: Self, max: Self) -> Result<Self, &'static str> {
-        let mut rng = rand::thread_rng();
-        Ok(rng.gen_range(0.0, 1.0) * (max - min) + min)
-    }
 
-    fn sample_laplace(shift: Self, scale: Self) -> Result<Self, &'static str> {
-        let sample = Self::sample_uniform(0., 1.)?;
-        Ok(shift - scale * (sample - 0.5).signum() * (1. - 2. * (sample - 0.5).abs()).ln())
+macro_rules! impl_float_random {
+    ($($source:ty),+) => {
+        $(
+            // No attempt has been made to make this noise remotely secure.
+            impl GenUniform for $source {
+                fn sample_uniform(min: Self, max: Self) -> Result<Self, &'static str> {
+                    let mut rng = rand::thread_rng();
+                    Ok(rng.gen_range(0.0, 1.0) as $source * (max - min) + min)
+                }
+            }
+
+            impl GenLaplace for $source {
+                fn sample_laplace(shift: Self, scale: Self) -> Result<Self, &'static str> {
+                    let sample = Self::sample_uniform(0., 1.)?;
+                    Ok(shift - scale * (sample - 0.5).signum() * (1. - 2. * (sample - 0.5).abs()).ln())
+                }
+            }
+        )+
+    }
+}
+
+impl_float_random!(f64, f32);
+
+
+
+macro_rules! impl_int_random {
+    ($($source:ty),+) => {
+        $(
+            // No attempt has been made to make this noise remotely secure.
+            impl GenUniform for $source {
+                fn sample_uniform(min: Self, max: Self) -> Result<Self, &'static str> {
+                    let mut rng = rand::thread_rng();
+                    Ok((rng.gen_range(0.0, 1.0) * (max - min) as f64) as $source + min)
+                }
+            }
+        )+
+    }
+}
+
+impl_int_random!(u8, u16, u32, u64, u128);
+
+pub trait IsNull {
+    fn is_null(&self) -> bool;
+}
+
+impl IsNull for f64 {
+    fn is_null(&self) -> bool {
+        !self.is_finite()
     }
 }

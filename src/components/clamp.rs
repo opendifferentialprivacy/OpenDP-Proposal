@@ -1,30 +1,30 @@
-use crate::{Transformation, Domain};
+use crate::{Transformation, Domain, Properties};
 use crate::traits::{PartialMin, PartialMax};
 use std::fmt::Debug;
 
 
 /// Create a transformation struct representing a clamp.
 pub fn make_clamp<T>(
-    lower: T, upper: T
+    input_properties: Properties<T>, lower: T, upper: T,
 ) -> Result<Transformation<T, T>, &'static str>
     where T: 'static + PartialOrd + PartialMax + PartialMin + Clone + Debug {
     if lower > upper {
-        return Err("lower must not be greater than upper")
+        return Err("lower must not be greater than upper");
     }
 
-    /// Clamp potentially null data between lower/upper.
-    fn clamper<T: PartialOrd + PartialMax + PartialMin>(
-        lower: T, upper: T, data: Vec<T>,
-    ) -> Result<Vec<T>, &'static str> {
-        data.into_iter()
-            .map(|v| v.partial_min(&upper)?.partial_max(&lower))
-            .collect::<Result<_, _>>()
-    }
+    let mut output_properties = input_properties.clone();
+    output_properties.domain = Some(Domain::<T>::Continuous {
+        lower: Some(lower.clone()),
+        upper: Some(upper.clone()),
+    });
 
     Ok(Transformation {
-        input_domain: Domain::<T>::Continuous { lower: None, upper: None },
-        output_domain: Domain::<T>::Continuous { lower: Some(lower.clone()), upper: Some(upper.clone()) },
+        input_properties,
+        output_properties,
         stability: 1.0,
-        function: Box::new(move |data: Vec<T>| clamper(lower.clone(), upper.clone(), data)),
+        function: Box::new(move |data: Vec<T>|
+            data.into_iter()
+                .map(|v| v.partial_min(&upper)?.partial_max(&lower))
+                .collect()),
     })
 }
