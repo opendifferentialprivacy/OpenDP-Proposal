@@ -9,7 +9,7 @@ fn analysis_sum() -> Result<(), &'static str> {
     let num_records = 100;
     let data = (0..num_records).map(|_| 1.).collect::<Vec<f64>>();
 
-    let sum = (chained.function)(&data.into())?;
+    let sum = (chained.function)(data)?;
 
     println!("noised sum: {:?}", sum);
 

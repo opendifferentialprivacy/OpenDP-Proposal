@@ -6,3 +6,5 @@ edition = "2018"
 
 [dependencies]
 rand = "0.7.3"
+ieee754 = "0.2.6"
+num = "0.3.0"
