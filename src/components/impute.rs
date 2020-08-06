@@ -1,10 +1,10 @@
-use crate::{Transformation, Properties};
+use crate::{Transformation, Domain};
 use std::fmt::Debug;
 use crate::traits::{IsNull, GenUniform};
 
 /// Create a transformation struct representing a clamp.
 pub fn make_imputation<T>(
-    input_properties: Properties<T>, lower: T, upper: T
+    input_properties: Domain<T>, lower: T, upper: T
 ) -> Result<Transformation<T, T>, &'static str>
     where T: 'static + PartialOrd + Clone + Debug + IsNull + GenUniform {
     if lower > upper {
@@ -15,8 +15,8 @@ pub fn make_imputation<T>(
     output_properties.has_nullity = false;
 
     Ok(Transformation {
-        input_properties,
-        output_properties,
+        input_domain: input_properties,
+        output_domain: output_properties,
         stability: 1.0,
         function: Box::new(move |data: Vec<T>|
             data.into_iter().map(|v|
