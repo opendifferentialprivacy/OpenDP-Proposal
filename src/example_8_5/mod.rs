@@ -1,5 +1,5 @@
 use crate::example_8_5::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance};
-use crate::example_8_5::domain::DataDomain;
+use crate::example_8_5::domain::{DataDomain, Vector, Scalar, AtomicDomain, IntDomain, I64Domain};
 
 mod domain;
 mod metric;
@@ -111,7 +111,7 @@ fn make_row_transform(input_domain: DataDomain, output_domain: DataDomain, funct
         function,
     }
 }
-//
+
 // fn make_base_gaussian() -> Measurement {
 //     Measurement {
 //         input_metric: (),
@@ -121,11 +121,49 @@ fn make_row_transform(input_domain: DataDomain, output_domain: DataDomain, funct
 //         function: Box::new(())
 //     }
 // }
-//
-// fn make_clamp() -> Transformation {
-//
-// }
-//
+
+// issue: need to duplicate this for every atomic domain
+fn make_clamp_i64(input_domain: DataDomain, lower: i64, upper: i64) -> Result<Transformation, Error> {
+    let mut output_domain = DataDomain::Vector(match &input_domain {
+        DataDomain::Vector(Vector {
+                               atomic_type,
+                               is_empty,
+                               length
+                           }) => {
+            let (prior_lower, prior_upper) = match *atomic_type.clone() {
+                DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {lower, upper, categories})))) =>
+                    (lower, upper),
+                _ => return Err("invalid atomic type")
+            };
+            let lower = match prior_lower {
+                Some(prior_lower) => prior_lower.max(lower),
+                None => lower
+            };
+            let upper = match prior_upper {
+                Some(prior_upper) => prior_upper.max(upper),
+                None => upper
+            };
+            Vector {
+                atomic_type: Box::new(DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {
+                    lower: Some(lower),
+                    upper: Some(upper),
+                    categories: None,
+                }))))),
+                is_empty: *is_empty,
+                length: length.clone(),
+            }
+        },
+        _ => return Err("invalid input domain")
+    });
+    Ok(Transformation {
+        input_domain,
+        output_domain,
+        stability_relation: Box::new(move |in_dist: DataDistance, out_dist| in_dist <= out_dist),
+        // issue: how to differentiate between calls out to different execution environments
+        function: Box::new(move |data| Ok(data))
+    })
+}
+
 // fn make_sum() -> Transformation {
 //
 // }

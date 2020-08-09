@@ -7,13 +7,13 @@ pub(crate) enum DataDomain {
 
 
 #[derive(PartialEq, Clone)]
-pub(crate) struct Scalar(AtomicDomain);
+pub(crate) struct Scalar(pub(crate) AtomicDomain);
 
 #[derive(PartialEq, Clone)]
 pub(crate) struct Vector<TLength: PartialEq + Clone> {
-    atomic_type: Box<DataDomain>,
-    is_empty: bool,
-    length: Option<TLength>
+    pub(crate) atomic_type: Box<DataDomain>,
+    pub(crate) is_empty: bool,
+    pub(crate) length: Option<TLength>
 }
 
 #[derive(PartialEq, Clone)]
@@ -54,9 +54,9 @@ macro_rules! derive_float {
 
         #[derive(PartialEq, Clone)]
         pub(crate) struct $name {
-            non_null: bool,
-            lower: Option<$ty>,
-            upper: Option<$ty>
+            pub(crate) non_null: bool,
+            pub(crate) lower: Option<$ty>,
+            pub(crate) upper: Option<$ty>
         }
 
         impl $name {
@@ -95,10 +95,10 @@ macro_rules! derive_optional_integer {
     ($name:ident, $ty:ty) => {
         #[derive(PartialEq, Clone)]
         pub(crate) struct $name {
-            non_null: bool,
-            lower: Option<$ty>,
-            upper: Option<$ty>,
-            categories: Option<Vec<$ty>>
+            pub(crate) non_null: bool,
+            pub(crate) lower: Option<$ty>,
+            pub(crate) upper: Option<$ty>,
+            pub(crate) categories: Option<Vec<$ty>>
         }
 
         impl $name {
@@ -144,9 +144,9 @@ macro_rules! derive_integer {
     ($name:ident, $ty:ty) => {
         #[derive(PartialEq, Clone)]
         pub(crate) struct $name {
-            lower: Option<$ty>,
-            upper: Option<$ty>,
-            categories: Option<Vec<$ty>>
+            pub(crate) lower: Option<$ty>,
+            pub(crate) upper: Option<$ty>,
+            pub(crate) categories: Option<Vec<$ty>>
         }
 
         impl $name {

@@ -73,7 +73,7 @@ impl Metric for DistFloat {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, PartialOrd, PartialEq)]
 pub(crate) enum DataDistance {
     DistFloat(f64),
     L1(f64),
