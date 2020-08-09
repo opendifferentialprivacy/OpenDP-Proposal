@@ -1,4 +1,4 @@
-use crate::{Transformation, Measurement, Metric};
+use crate::example_7_1::{Transformation, Measurement, Metric};
 use std::fmt::Debug;
 
 pub fn make_tt_chain<T, U, V>(

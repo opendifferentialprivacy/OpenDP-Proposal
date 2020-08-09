@@ -1,6 +1,6 @@
-use crate::{Transformation, Domain};
+use crate::example_7_1::{Transformation, Domain};
 use std::fmt::Debug;
-use crate::traits::{IsNull, GenUniform};
+use crate::example_7_1::traits::{IsNull, GenUniform};
 
 /// Create a transformation struct representing a clamp.
 pub fn make_imputation<T>(

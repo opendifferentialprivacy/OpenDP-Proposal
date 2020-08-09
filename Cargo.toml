@@ -5,7 +5,6 @@ authors = ["Shoeboxam <shoeboxam@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rand = "0.7.3"
-ieee754 = "0.2.6"
-num = "0.3.0"
-serde_json = "1.0"
+#rand = "0.7.3"
+#num = "0.3.0"
+#serde_json = "1.0"

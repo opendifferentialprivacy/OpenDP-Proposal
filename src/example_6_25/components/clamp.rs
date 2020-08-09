@@ -1,5 +1,5 @@
-use crate::{Transformation, Bounds, Domain};
-use crate::traits::{PartialMin, PartialMax};
+use crate::example_7_1::{Transformation, Bounds, Domain};
+use crate::example_7_1::traits::{PartialMin, PartialMax};
 use std::fmt::Debug;
 
 pub trait IsClampable {}
