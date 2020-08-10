@@ -1,5 +1,5 @@
 use crate::example_8_9::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance};
-use crate::example_8_9::domain::{DataDomain, AtomicDomain, NumericDomain};
+use crate::example_8_9::domain::{DataDomain, Nature, NumericNature, AtomicDomain};
 use std::fmt::Debug;
 
 mod domain;
@@ -92,9 +92,9 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
                             Err(e) => (Err(e), (data.clone(), privacy_budget.clone()))
                         }
                     }
-                })
+                }),
             }
-        })
+        }),
     }
 }
 
@@ -150,7 +150,6 @@ fn make_clamp_numeric<NI, CI>(
 ) -> Result<Transformation<NI, CI, NI, CI>, Error>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
-
     let output_domain = match &input_domain {
         DataDomain::Vector {
             atomic_type,
@@ -158,9 +157,10 @@ fn make_clamp_numeric<NI, CI>(
             length
         } => {
             // rest/unpack the prior numeric domain descriptors
-            let NumericDomain {
-                lower: prior_lower, upper: prior_upper, optional
-            } = if let AtomicDomain::Numeric(v) = atomic_type { v } else {
+            let AtomicDomain { nature, nullity } = atomic_type;
+            let NumericNature {
+                lower: prior_lower, upper: prior_upper
+            } = if let Nature::Numeric(v) = nature { v } else {
                 return Err("invalid atomic type");
             };
 
@@ -168,15 +168,17 @@ fn make_clamp_numeric<NI, CI>(
             DataDomain::Vector {
                 length: length.clone(),
                 is_nonempty: *is_nonempty,
-                atomic_type: AtomicDomain::Numeric(NumericDomain {
-                    lower: Some(prior_lower.as_ref()
-                        .map(|l| if l < &lower { &lower } else { l })
-                        .unwrap_or(&lower).clone()),
-                    upper: Some(prior_upper.as_ref()
-                        .map(|u| if u > &upper { &upper } else { u })
-                        .unwrap_or(&upper).clone()),
-                    optional: *optional,
-                }),
+                atomic_type: AtomicDomain {
+                    nature: Nature::Numeric(NumericNature {
+                        lower: Some(prior_lower.as_ref()
+                            .map(|l| if l < &lower { &lower } else { l })
+                            .unwrap_or(&lower).clone()),
+                        upper: Some(prior_upper.as_ref()
+                            .map(|u| if u > &upper { &upper } else { u })
+                            .unwrap_or(&upper).clone()),
+                    }),
+                    nullity: *nullity,
+                },
             }
         }
         _ => return Err("invalid input domain")
@@ -196,9 +198,7 @@ fn make_clamp_numeric<NI, CI>(
 //     lower: NI, upper: NI,
 // ) -> Result<Transformation<NI, CI, NI, CI>, Error>
 //     where NI: PartialOrd + Clone + Debug,
-//           CI: Eq + Clone + Debug {
-//
-// }
+//           CI: Eq + Clone + Debug {}
 // fn make_noisy_sum_function(
 //     input_domain: DataDomain,
 //     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
