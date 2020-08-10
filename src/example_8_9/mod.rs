@@ -15,9 +15,9 @@ enum Data {
 
 struct Transformation<NI, CI, NO, CO>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug,
+          CI: Eq + Clone + Debug,
           NO: PartialOrd + Clone + Debug,
-          CO: Ord + Clone + Debug {
+          CO: Eq + Clone + Debug {
     input_domain: DataDomain<NI, CI>,
     output_domain: DataDomain<NO, CO>,
     stability_relation: Box<dyn Fn(DataDistance, DataDistance) -> bool>,
@@ -26,47 +26,47 @@ struct Transformation<NI, CI, NO, CO>
 
 struct Measurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
+          CI: Eq + Clone + Debug {
     input_metric: DataMetric,
     input_domain: DataDomain<NI, CI>,
     output_measure: PrivacyMeasure,
     privacy_relation: Box<dyn Fn(DataDistance, PrivacyDistance) -> bool>,
-    function: Box<dyn Fn(Data) -> Result<Data, Error>>
+    function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
 struct InteractiveMeasurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
+          CI: Eq + Clone + Debug {
     input_domain: DataDomain<NI, CI>,
     input_distance: DataDistance,
     privacy_loss: PrivacyDistance,
-    function: Box<dyn Fn(Data) -> Queryable<NI, CI, (Data, PrivacyDistance)>>
+    function: Box<dyn Fn(Data) -> Queryable<NI, CI, (Data, PrivacyDistance)>>,
 }
 
 struct Queryable<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
+          CI: Eq + Clone + Debug {
     state: S,
-    eval: Box<dyn Fn(Measurement<NI, CI>, PrivacyDistance, &S) -> (Result<Data, Error>, S)>
+    eval: Box<dyn Fn(Measurement<NI, CI>, PrivacyDistance, &S) -> (Result<Data, Error>, S)>,
 }
+
 impl<NI, CI, S> Queryable<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
+          CI: Eq + Clone + Debug {
     fn query(&mut self, measurement: Measurement<NI, CI>, privacy_loss: PrivacyDistance) -> Result<Data, Error> {
         let (response, state) = (self.eval)(measurement, privacy_loss, &self.state);
         self.state = state;
-        return response
+        return response;
     }
 }
 
 fn make_adaptive_composition<NI: 'static, CI: 'static>(
     input_domain: DataDomain<NI, CI>,
     input_distance: DataDistance,
-    privacy_budget: PrivacyDistance
+    privacy_budget: PrivacyDistance,
 ) -> InteractiveMeasurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
-
+          CI: Eq + Clone + Debug {
     InteractiveMeasurement {
         input_domain: input_domain.clone(),
         input_distance: input_distance.clone(),
@@ -80,10 +80,9 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
                     query: Measurement<NI, CI>,
                     privacy_loss: PrivacyDistance,
                     // state
-                    (data, privacy_budget): &(Data, PrivacyDistance)
-                | -> (Result<Data, Error>, (Data, PrivacyDistance)) {
+                    (data, privacy_budget): &(Data, PrivacyDistance)| -> (Result<Data, Error>, (Data, PrivacyDistance)) {
                     if query.input_domain != input_domain.clone() {
-                        return (Err("domain mismatch"), (data.clone(), privacy_budget.clone()))
+                        return (Err("domain mismatch"), (data.clone(), privacy_budget.clone()));
                     }
                     if privacy_budget < &privacy_loss {
                         (Err("insufficient budget"), (data.clone(), privacy_budget.clone()))
@@ -93,19 +92,19 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
                             Err(e) => (Err(e), (data.clone(), privacy_budget.clone()))
                         }
                     }
-                })
+                }),
             }
-        })
+        }),
     }
 }
 
 // issue: state is hardcoded, not generic
 fn postprocess<NI: 'static, CI: 'static>(
     interactive_measurement: InteractiveMeasurement<NI, CI>,
-    queryable_map: Box<dyn Fn(Queryable<NI, CI, (Data, PrivacyDistance)>) -> Queryable<NI, CI, (Data, PrivacyDistance)>>
+    queryable_map: Box<dyn Fn(Queryable<NI, CI, (Data, PrivacyDistance)>) -> Queryable<NI, CI, (Data, PrivacyDistance)>>,
 ) -> InteractiveMeasurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
+          CI: Eq + Clone + Debug {
     let function = interactive_measurement.function;
     InteractiveMeasurement {
         input_domain: interactive_measurement.input_domain,
@@ -114,7 +113,7 @@ fn postprocess<NI: 'static, CI: 'static>(
         function: Box::new(move |data: Data| {
             let queryable_inner = (*function)(data);
             queryable_map(queryable_inner)
-        })
+        }),
     }
 }
 
@@ -125,9 +124,9 @@ fn make_row_transform<NI, CI, NO, CO>(
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 ) -> Transformation<NI, CI, NO, CO>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug,
+          CI: Eq + Clone + Debug,
           NO: PartialOrd + Clone + Debug,
-          CO: Ord + Clone + Debug {
+          CO: Eq + Clone + Debug {
     Transformation {
         input_domain,
         output_domain,
@@ -146,50 +145,49 @@ fn make_row_transform<NI, CI, NO, CO>(
 //     }
 // }
 
-// issue: need to duplicate this for every atomic domain
-fn make_clamp<NI, CI>(
+fn make_clamp_numeric<NI, CI>(
     input_domain: DataDomain<NI, CI>,
     lower: NI, upper: NI,
 ) -> Result<Transformation<NI, CI, NI, CI>, Error>
     where NI: PartialOrd + Clone + Debug,
-          CI: Ord + Clone + Debug {
-    let mut output_domain = match &input_domain {
+          CI: Eq + Clone + Debug {
+
+    let output_domain = match &input_domain {
         DataDomain::Vector {
             atomic_type,
             is_nonempty,
             length
         } => {
-            let (prior_lower, prior_upper, optional) = match atomic_type {
-                AtomicDomain::Numeric(NumericDomain {lower, upper, optional}) =>
-                    (lower, upper, optional),
-                _ => return Err("invalid atomic type")
+            // rest/unpack the prior numeric domain descriptors
+            let NumericDomain {
+                lower: prior_lower, upper: prior_upper, optional
+            } = if let AtomicDomain::Numeric(v) = atomic_type { v } else {
+                return Err("invalid atomic type");
             };
-            let lower = match prior_lower {
-                Some(prior_lower) => (*prior_lower).max(lower),
-                None => lower
-            };
-            let upper = match prior_upper {
-                Some(prior_upper) => prior_upper.max(upper),
-                None => upper
-            };
+
             DataDomain::Vector {
                 length: length.clone(),
                 is_nonempty: *is_nonempty,
                 atomic_type: AtomicDomain::Numeric(NumericDomain {
-                    lower: Some(lower),
-                    upper: Some(upper),
-                    optional: *optional
-                })
+                    lower: Some(prior_lower.as_ref()
+                        .map(|l| if l < &lower { &lower } else { l })
+                        .unwrap_or(&lower).clone()),
+                    upper: Some(prior_upper.as_ref()
+                        .map(|u| if u > &upper { &upper } else { u })
+                        .unwrap_or(&upper).clone()),
+                    optional: *optional,
+                }),
             }
-        },
+        }
         _ => return Err("invalid input domain")
     };
+
     Ok(Transformation {
         input_domain,
         output_domain,
         stability_relation: Box::new(move |in_dist: DataDistance, out_dist| in_dist <= out_dist),
         // issue: how to differentiate between calls out to different execution environments
-        function: Box::new(move |data| Ok(data))
+        function: Box::new(move |data| Ok(data)),
     })
 }
 
@@ -204,3 +202,4 @@ fn make_clamp<NI, CI>(
 // ) -> Measurement {
 //
 // }
+

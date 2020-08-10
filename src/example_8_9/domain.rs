@@ -10,6 +10,7 @@ use std::fmt::Debug;
 //    CO: continuous output
 
 
+#[derive(PartialEq, Clone, Debug)]
 pub(crate) struct NumericDomain<N>
     where N: PartialOrd + Clone + Debug {
     pub(crate) lower: Option<N>,
@@ -17,14 +18,14 @@ pub(crate) struct NumericDomain<N>
     pub(crate) optional: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub(crate) struct CategoricalDomain<C>
     where C: Eq + Clone + Debug {
     pub(crate) categories: Option<Vec<C>>,
     pub(crate) optional: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub(crate) enum AtomicDomain<N, C>
     where N: PartialOrd + Clone + Debug,
           C: Eq + Clone + Debug {
@@ -48,7 +49,7 @@ pub(crate) enum DataDomain<N, C>
 impl<N> NumericDomain<N>
     where N: PartialOrd + Clone + Debug {
     // TODO
-    fn is_valid(&self, x: N) -> bool {
+    fn is_valid(&self, _x: N) -> bool {
         true
     }
 }
@@ -56,7 +57,7 @@ impl<N> NumericDomain<N>
 impl<C> CategoricalDomain<C>
     where C: Eq + Clone + Debug {
     // TODO
-    fn is_valid(&self, x: C) -> bool {
+    fn is_valid(&self, _x: C) -> bool {
         true
     }
 }
