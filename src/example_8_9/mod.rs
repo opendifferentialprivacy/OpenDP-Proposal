@@ -34,13 +34,13 @@ struct Measurement<NI, CI>
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
-struct InteractiveMeasurement<NI, CI>
+struct InteractiveMeasurement<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
     input_domain: DataDomain<NI, CI>,
     input_distance: DataDistance,
     privacy_loss: PrivacyDistance,
-    function: Box<dyn Fn(Data) -> Queryable<NI, CI, (Data, PrivacyDistance)>>,
+    function: Box<dyn Fn(Data) -> Queryable<NI, CI, S>>,
 }
 
 struct Queryable<NI, CI, S>
@@ -64,7 +64,7 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
     input_domain: DataDomain<NI, CI>,
     input_distance: DataDistance,
     privacy_budget: PrivacyDistance,
-) -> InteractiveMeasurement<NI, CI>
+) -> InteractiveMeasurement<NI, CI, (Data, PrivacyDistance)>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
     InteractiveMeasurement {
@@ -92,17 +92,16 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
                             Err(e) => (Err(e), (data.clone(), privacy_budget.clone()))
                         }
                     }
-                }),
+                })
             }
-        }),
+        })
     }
 }
 
-// issue: state is hardcoded, not generic
-fn postprocess<NI: 'static, CI: 'static>(
-    interactive_measurement: InteractiveMeasurement<NI, CI>,
-    queryable_map: Box<dyn Fn(Queryable<NI, CI, (Data, PrivacyDistance)>) -> Queryable<NI, CI, (Data, PrivacyDistance)>>,
-) -> InteractiveMeasurement<NI, CI>
+fn postprocess<NI: 'static, CI: 'static, S: 'static>(
+    interactive_measurement: InteractiveMeasurement<NI, CI, S>,
+    queryable_map: Box<dyn Fn(Queryable<NI, CI, S>) -> Queryable<NI, CI, S>>,
+) -> InteractiveMeasurement<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
     let function = interactive_measurement.function;
@@ -165,6 +164,7 @@ fn make_clamp_numeric<NI, CI>(
                 return Err("invalid atomic type");
             };
 
+            // construct a new domain with updated bounds
             DataDomain::Vector {
                 length: length.clone(),
                 is_nonempty: *is_nonempty,
@@ -191,10 +191,14 @@ fn make_clamp_numeric<NI, CI>(
     })
 }
 
-// fn make_sum() -> Transformation {
+// fn make_sum<NI, CI>(
+//     input_domain: DataDomain<NI, CI>,
+//     lower: NI, upper: NI,
+// ) -> Result<Transformation<NI, CI, NI, CI>, Error>
+//     where NI: PartialOrd + Clone + Debug,
+//           CI: Eq + Clone + Debug {
 //
 // }
-//
 // fn make_noisy_sum_function(
 //     input_domain: DataDomain,
 //     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
