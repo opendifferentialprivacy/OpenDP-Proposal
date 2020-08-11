@@ -3,6 +3,7 @@ use crate::example_8_9::domain::{DataDomain, Nature, NumericNature, AtomicDomain
 use std::fmt::Debug;
 use num::traits::Signed;
 use num::Zero;
+use std::ops::Shl;
 
 mod domain;
 mod metric;
@@ -45,6 +46,31 @@ struct InteractiveMeasurement<NI, CI, S>
     input_distance: DataDistance,
     privacy_loss: PrivacyDistance,
     function: Box<dyn Fn(Data) -> Queryable<NI, CI, S>>,
+}
+
+impl<NI, CI, NM, CM, NO, CO> Shl<Transformation<NI, CI, NM, CM>> for Transformation<NM, CM, NO, CO>
+    where NI: 'static + PartialOrd + Clone + Debug,
+          CI: 'static + Eq + Clone + Debug,
+          NM: 'static + PartialOrd + Clone + Debug,
+          CM: 'static + Eq + Clone + Debug,
+          NO: 'static + PartialOrd + Clone + Debug,
+          CO: 'static + Eq + Clone + Debug {
+    type Output = Result<Transformation<NI, CI, NO, CO>, Error>;
+
+    fn shl(self, rhs: Transformation<NI, CI, NM, CM>) -> Result<Transformation<NI, CI, NO, CO>, Error> {
+        make_tt_chain(self, rhs, None)
+    }
+}
+impl<NI, CI, NM, CM> Shl<Transformation<NI, CI, NM, CM>> for Measurement<NM, CM>
+    where NI: 'static + PartialOrd + Clone + Debug,
+          CI: 'static + Eq + Clone + Debug,
+          NM: 'static + PartialOrd + Clone + Debug,
+          CM: 'static + Eq + Clone + Debug {
+    type Output = Result<Measurement<NI, CI>, Error>;
+
+    fn shl(self, rhs: Transformation<NI, CI, NM, CM>) -> Result<Measurement<NI, CI>, Error> {
+        make_mt_chain(self, rhs, None)
+    }
 }
 
 struct Queryable<NI, CI, S>
@@ -295,7 +321,7 @@ fn make_sum<NI: 'static, CI>(
           CI: Eq + Clone + Debug,
           f64: From<NI> {
 
-    let AtomicDomain {nullity: nullity, nature} = if let DataDomain::Vector {
+    let AtomicDomain {nullity, nature} = if let DataDomain::Vector {
         atomic_type, ..
     } = &input_domain { atomic_type } else {return Err("Sum: input must be a vector")};
 
@@ -351,7 +377,7 @@ fn make_base_laplace<NI: 'static, CI>(
 }
 
 
-fn make_noisy_sum_function<NI: 'static, CI: 'static>(
+fn make_noisy_sum<NI: 'static, CI: 'static>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
     lower: NI, upper: NI, sigma: NI
@@ -373,6 +399,7 @@ fn make_noisy_sum_function<NI: 'static, CI: 'static>(
         PrivacyMeasure::ApproxDP(ApproxDP {}),
         sigma)?;
 
-    make_mt_chain(base_laplace, make_tt_chain(sum, clamp_numeric, None)?, None)
+    base_laplace << (sum << clamp_numeric)?
+    // make_mt_chain(base_laplace, make_tt_chain(sum, clamp_numeric, None)?, None)
 }
 
