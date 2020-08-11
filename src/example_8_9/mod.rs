@@ -19,8 +19,10 @@ struct Transformation<NI, CI, NO, CO>
           NO: PartialOrd + Clone + Debug,
           CO: Eq + Clone + Debug {
     input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
     output_domain: DataDomain<NO, CO>,
-    stability_relation: Box<dyn Fn(DataDistance, DataDistance) -> bool>,
+    output_metric: DataMetric,
+    stability_relation: Box<dyn Fn(&DataDistance, &DataDistance) -> bool>,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
@@ -30,7 +32,7 @@ struct Measurement<NI, CI>
     input_metric: DataMetric,
     input_domain: DataDomain<NI, CI>,
     output_measure: PrivacyMeasure,
-    privacy_relation: Box<dyn Fn(DataDistance, PrivacyDistance) -> bool>,
+    privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> bool>,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
@@ -119,7 +121,9 @@ fn postprocess<NI: 'static, CI: 'static, S: 'static>(
 
 fn make_row_transform<NI, CI, NO, CO>(
     input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
     output_domain: DataDomain<NO, CO>,
+    output_metric: DataMetric,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 ) -> Transformation<NI, CI, NO, CO>
     where NI: PartialOrd + Clone + Debug,
@@ -128,8 +132,11 @@ fn make_row_transform<NI, CI, NO, CO>(
           CO: Eq + Clone + Debug {
     Transformation {
         input_domain,
+        input_metric,
         output_domain,
-        stability_relation: Box::new(move |input_distance: DataDistance, output_distance: DataDistance| -> bool { true }),
+        // cannot make any claim of c_stability for arbitrary functions
+        output_metric,
+        stability_relation: Box::new(move |_in_dist: &DataDistance, _out_dist: &DataDistance| -> bool { true }),
         function,
     }
 }
@@ -146,6 +153,7 @@ fn make_row_transform<NI, CI, NO, CO>(
 
 fn make_clamp_numeric<NI, CI>(
     input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
     lower: NI, upper: NI,
 ) -> Result<Transformation<NI, CI, NI, CI>, Error>
     where NI: PartialOrd + Clone + Debug,
@@ -186,8 +194,10 @@ fn make_clamp_numeric<NI, CI>(
 
     Ok(Transformation {
         input_domain,
+        input_metric: input_metric.clone(),
         output_domain,
-        stability_relation: Box::new(move |in_dist: DataDistance, out_dist| in_dist <= out_dist),
+        output_metric: input_metric,
+        stability_relation: Box::new(move |in_dist, out_dist| in_dist <= out_dist),
         // issue: how to differentiate between calls out to different execution environments
         function: Box::new(move |data| Ok(data)),
     })
@@ -199,6 +209,100 @@ fn make_clamp_numeric<NI, CI>(
 // ) -> Result<Transformation<NI, CI, NI, CI>, Error>
 //     where NI: PartialOrd + Clone + Debug,
 //           CI: Eq + Clone + Debug {}
+
+
+fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
+    trans_2: Transformation<NM, CM, NO, CO>,
+    trans_1: Transformation<NI, CI, NM, CM>,
+    hint: Option<Box<fn(&DataDistance, &DataDistance) -> DataDistance>>,
+) -> Result<Transformation<NI, CI, NO, CO>, Error>
+    where NI: 'static + PartialOrd + Clone + Debug,
+          CI: 'static + Eq + Clone + Debug,
+          NM: 'static + PartialOrd + Clone + Debug,
+          CM: 'static + Eq + Clone + Debug,
+          NO: 'static + PartialOrd + Clone + Debug,
+          CO: 'static + Eq + Clone + Debug {
+
+
+    if trans_1.output_domain != trans_2.input_domain {
+        return Err("TT chain: domain mismatch");
+    }
+
+    if trans_1.output_metric != trans_2.input_metric {
+        return Err("TT chain: metric mismatch");
+    }
+
+    // destructure to avoid "move"ing entire structs for boxes
+    let Transformation {
+        stability_relation: trans_1_stability,
+        function: trans_1_function, ..
+    } = trans_1;
+    let Transformation {
+        stability_relation: trans_2_stability,
+        function: trans_2_function, ..
+    } = trans_2;
+
+    Ok(Transformation {
+        input_domain: trans_1.input_domain,
+        input_metric: trans_1.input_metric,
+        output_domain: trans_2.output_domain,
+        output_metric: trans_2.output_metric,
+        stability_relation: Box::new(move |dist_in, dist_out| {
+            let dist_mid = match hint.as_ref() {
+                Some(hint) => (*hint)(dist_in, dist_out),
+                // TODO: binary search
+                None => return false
+            };
+            (trans_2_stability)(dist_in, &dist_mid) && (trans_1_stability)(&dist_mid, dist_out)
+        }),
+        function: Box::new(move |data| (trans_2_function)((trans_1_function)(data)?)),
+    })
+}
+
+
+fn make_mt_chain<NI, CI, NM, CM>(
+    meas: Measurement<NM, CM>,
+    trans: Transformation<NI, CI, NM, CM>,
+    hint: Option<Box<fn(&DataDistance, &PrivacyDistance) -> DataDistance>>,
+) -> Result<Measurement<NI, CI>, Error>
+    where NI: 'static + PartialOrd + Clone + Debug,
+          CI: 'static + Eq + Clone + Debug,
+          NM: 'static + PartialOrd + Clone + Debug,
+          CM: 'static + Eq + Clone + Debug {
+
+    if trans.output_domain != meas.input_domain {
+        return Err("MT chain: domain mismatch");
+    }
+    if trans.output_metric != meas.input_metric {
+        return Err("MT chain: metric mismatch");
+    }
+    // destructure to avoid moving entire structs
+    let Transformation {
+        stability_relation: trans_relation,
+        function: trans_function, ..
+    } = trans;
+    let Measurement {
+        privacy_relation: meas_relation,
+        function: meas_function, ..
+    } = meas;
+
+    Ok(Measurement {
+        input_domain: trans.input_domain,
+        input_metric: trans.input_metric,
+        output_measure: meas.output_measure,
+        privacy_relation: Box::new(move |dist_in, dist_out| {
+            let dist_mid = match hint.as_ref() {
+                Some(hint) => (*hint)(dist_in, dist_out),
+                // TODO: binary search
+                None => return false
+            };
+            (trans_relation)(dist_in, &dist_mid) && (meas_relation)(&dist_mid, dist_out)
+        }),
+        function: Box::new(move |data| (meas_function)((trans_function)(data)?)),
+    })
+}
+
+
 // fn make_noisy_sum_function(
 //     input_domain: DataDomain,
 //     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
