@@ -8,7 +8,7 @@ use std::ops::Shl;
 use crate::example_8_9::domain::{DataDomain, AtomicDomain, NumericNature, Nature};
 use num::{Signed, Zero};
 
-fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
+pub(crate) fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
     trans_2: Transformation<NM, CM, NO, CO>,
     trans_1: Transformation<NI, CI, NM, CM>,
     hint: Option<Box<fn(&DataDistance, &DataDistance) -> DataDistance>>,
@@ -56,7 +56,7 @@ fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
 }
 
 
-fn make_mt_chain<NI, CI, NM, CM>(
+pub(crate) fn make_mt_chain<NI, CI, NM, CM>(
     meas: Measurement<NM, CM>,
     trans: Transformation<NI, CI, NM, CM>,
     hint: Option<Box<fn(&DataDistance, &PrivacyDistance) -> DataDistance>>,
@@ -96,32 +96,6 @@ fn make_mt_chain<NI, CI, NM, CM>(
         }),
         function: Box::new(move |data| (meas_function)((trans_function)(data)?)),
     })
-}
-
-
-impl<NI, CI, NM, CM, NO, CO> Shl<Transformation<NI, CI, NM, CM>> for Transformation<NM, CM, NO, CO>
-    where NI: 'static + PartialOrd + Clone + Debug,
-          CI: 'static + Eq + Clone + Debug,
-          NM: 'static + PartialOrd + Clone + Debug,
-          CM: 'static + Eq + Clone + Debug,
-          NO: 'static + PartialOrd + Clone + Debug,
-          CO: 'static + Eq + Clone + Debug {
-    type Output = Result<Transformation<NI, CI, NO, CO>, Error>;
-
-    fn shl(self, rhs: Transformation<NI, CI, NM, CM>) -> Result<Transformation<NI, CI, NO, CO>, Error> {
-        make_tt_chain(self, rhs, None)
-    }
-}
-impl<NI, CI, NM, CM> Shl<Transformation<NI, CI, NM, CM>> for Measurement<NM, CM>
-    where NI: 'static + PartialOrd + Clone + Debug,
-          CI: 'static + Eq + Clone + Debug,
-          NM: 'static + PartialOrd + Clone + Debug,
-          CM: 'static + Eq + Clone + Debug {
-    type Output = Result<Measurement<NI, CI>, Error>;
-
-    fn shl(self, rhs: Transformation<NI, CI, NM, CM>) -> Result<Measurement<NI, CI>, Error> {
-        make_mt_chain(self, rhs, None)
-    }
 }
 
 
@@ -285,7 +259,7 @@ fn make_noisy_sum<NI: 'static, CI: 'static>(
         PrivacyMeasure::ApproxDP(ApproxDP {}),
         sigma)?;
 
-    base_laplace << (sum << clamp_numeric)?
+    base_laplace << sum << clamp_numeric
     // make_mt_chain(base_laplace, make_tt_chain(sum, clamp_numeric, None)?, None)
 }
 

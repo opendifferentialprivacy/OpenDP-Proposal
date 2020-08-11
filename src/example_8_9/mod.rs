@@ -5,6 +5,7 @@ use std::fmt::Debug;
 mod domain;
 mod metric;
 mod constructors;
+mod sugar;
 
 type Error = &'static str;
 
@@ -14,7 +15,7 @@ enum Data {
     // Literal(Value)
 }
 
-struct Transformation<NI, CI, NO, CO>
+pub(crate) struct Transformation<NI, CI, NO, CO>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug,
           NO: PartialOrd + Clone + Debug,
@@ -27,7 +28,7 @@ struct Transformation<NI, CI, NO, CO>
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
-struct Measurement<NI, CI>
+pub(crate) struct Measurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
     input_metric: DataMetric,
