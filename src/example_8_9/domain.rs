@@ -16,6 +16,14 @@ pub(crate) struct NumericNature<N>
     pub(crate) upper: Option<N>
 }
 
+// custom Default impl doesn't require T: Default
+impl<N> Default for NumericNature<N>
+    where N: PartialOrd + Clone + Debug {
+    fn default() -> Self {
+        NumericNature { lower: None, upper: None }
+    }
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub(crate) enum Nature<N, C>
     where N: PartialOrd + Clone + Debug,

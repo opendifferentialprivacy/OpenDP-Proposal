@@ -1,6 +1,7 @@
-use crate::example_8_9::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance};
+use crate::example_8_9::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance, L2};
 use crate::example_8_9::domain::{DataDomain, Nature, NumericNature, AtomicDomain};
 use std::fmt::Debug;
+use num::traits::Signed;
 
 mod domain;
 mod metric;
@@ -203,13 +204,6 @@ fn make_clamp_numeric<NI, CI>(
     })
 }
 
-// fn make_sum<NI, CI>(
-//     input_domain: DataDomain<NI, CI>,
-//     lower: NI, upper: NI,
-// ) -> Result<Transformation<NI, CI, NI, CI>, Error>
-//     where NI: PartialOrd + Clone + Debug,
-//           CI: Eq + Clone + Debug {}
-
 
 fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
     trans_2: Transformation<NM, CM, NO, CO>,
@@ -223,7 +217,6 @@ fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
           NO: 'static + PartialOrd + Clone + Debug,
           CO: 'static + Eq + Clone + Debug {
 
-
     if trans_1.output_domain != trans_2.input_domain {
         return Err("TT chain: domain mismatch");
     }
@@ -232,7 +225,7 @@ fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
         return Err("TT chain: metric mismatch");
     }
 
-    // destructure to avoid "move"ing entire structs for boxes
+    // destructure to avoid "move"ing entire structs into closures
     let Transformation {
         stability_relation: trans_1_stability,
         function: trans_1_function, ..
@@ -276,7 +269,7 @@ fn make_mt_chain<NI, CI, NM, CM>(
     if trans.output_metric != meas.input_metric {
         return Err("MT chain: metric mismatch");
     }
-    // destructure to avoid moving entire structs
+    // destructure to avoid moving entire structs into closures
     let Transformation {
         stability_relation: trans_relation,
         function: trans_function, ..
@@ -299,6 +292,39 @@ fn make_mt_chain<NI, CI, NM, CM>(
             (trans_relation)(dist_in, &dist_mid) && (meas_relation)(&dist_mid, dist_out)
         }),
         function: Box::new(move |data| (meas_function)((trans_function)(data)?)),
+    })
+}
+
+
+fn make_sum<NI: 'static, CI>(
+    input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
+    lower: NI, upper: NI,
+) -> Result<Transformation<NI, CI, NI, CI>, Error>
+
+    where NI: PartialOrd + Clone + Debug + Signed,
+          CI: Eq + Clone + Debug,
+          f64: From<NI> {
+
+    let AtomicDomain {nullity, ..} = if let DataDomain::Vector {
+        atomic_type, ..
+    } = &input_domain { atomic_type } else {return Err("Sum: input must be a vector.")};
+
+    Ok(Transformation {
+        input_domain: input_domain.clone(),
+        input_metric: input_metric.clone(),
+        output_domain: DataDomain::Scalar(AtomicDomain {
+            nature: Nature::Numeric(NumericNature::default()),
+            nullity: *nullity
+        }),
+        output_metric: DataMetric::L2(L2 {}),
+        stability_relation: Box::new(move |dist_in, dist_out|
+            match (dist_in, dist_out) {
+                (DataDistance::AddRemove(dist_in), DataDistance::L1(dist_out)) =>
+                    *dist_in as f64 * (f64::from(if lower.abs() < upper.abs() { upper.abs() } else { lower.abs() })) <= *dist_out,
+                _ => false
+        }),
+        function: Box::new(move |data| Ok(data))
     })
 }
 
