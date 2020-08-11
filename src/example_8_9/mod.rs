@@ -1,7 +1,8 @@
-use crate::example_8_9::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance, L2};
+use crate::example_8_9::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance, DistFloat, ApproxDP};
 use crate::example_8_9::domain::{DataDomain, Nature, NumericNature, AtomicDomain};
 use std::fmt::Debug;
 use num::traits::Signed;
+use num::Zero;
 
 mod domain;
 mod metric;
@@ -141,16 +142,6 @@ fn make_row_transform<NI, CI, NO, CO>(
         function,
     }
 }
-
-// fn make_base_gaussian() -> Measurement {
-//     Measurement {
-//         input_metric: (),
-//         input_domain: (),
-//         output_measure: (),
-//         privacy_relation: Box::new(()),
-//         function: Box::new(())
-//     }
-// }
 
 fn make_clamp_numeric<NI, CI>(
     input_domain: DataDomain<NI, CI>,
@@ -299,28 +290,31 @@ fn make_mt_chain<NI, CI, NM, CM>(
 fn make_sum<NI: 'static, CI>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
-    lower: NI, upper: NI,
 ) -> Result<Transformation<NI, CI, NI, CI>, Error>
-
     where NI: PartialOrd + Clone + Debug + Signed,
           CI: Eq + Clone + Debug,
           f64: From<NI> {
 
-    let AtomicDomain {nullity, ..} = if let DataDomain::Vector {
+    let AtomicDomain {nullity: nullity, nature} = if let DataDomain::Vector {
         atomic_type, ..
-    } = &input_domain { atomic_type } else {return Err("Sum: input must be a vector.")};
+    } = &input_domain { atomic_type } else {return Err("Sum: input must be a vector")};
+
+    let (lower, upper) = if let Nature::Numeric(NumericNature{
+        lower: Some(lower), upper: Some(upper)}) = nature {(lower.clone(), upper.clone())} else {
+        return Err("Sum: input nature must be numeric")
+    };
 
     Ok(Transformation {
-        input_domain: input_domain.clone(),
-        input_metric: input_metric.clone(),
         output_domain: DataDomain::Scalar(AtomicDomain {
             nature: Nature::Numeric(NumericNature::default()),
             nullity: *nullity
         }),
-        output_metric: DataMetric::L2(L2 {}),
+        input_domain,
+        input_metric,
+        output_metric: DataMetric::DistFloat(DistFloat {}),
         stability_relation: Box::new(move |dist_in, dist_out|
             match (dist_in, dist_out) {
-                (DataDistance::AddRemove(dist_in), DataDistance::L1(dist_out)) =>
+                (DataDistance::AddRemove(dist_in), DataDistance::DistFloat(dist_out)) =>
                     *dist_in as f64 * (f64::from(if lower.abs() < upper.abs() { upper.abs() } else { lower.abs() })) <= *dist_out,
                 _ => false
         }),
@@ -329,11 +323,56 @@ fn make_sum<NI: 'static, CI>(
 }
 
 
-// fn make_noisy_sum_function(
-//     input_domain: DataDomain,
-//     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
-//     L: f64, U: f64, privacy_distance: PrivacyDistance
-// ) -> Measurement {
-//
-// }
+fn make_base_laplace<NI: 'static, CI>(
+    input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
+    output_measure: PrivacyMeasure,
+    sigma: NI
+) -> Result<Measurement<NI, CI>, Error>
+    where NI: PartialOrd + Clone + Debug + Zero,
+          CI: Eq + Clone + Debug,
+          f64: From<NI> {
+
+    if sigma < NI::zero() {
+        return Err("Base Laplace: sigma must be greater than zero")
+    }
+
+    Ok(Measurement {
+        input_domain: input_domain.clone(),
+        input_metric: input_metric.clone(),
+        output_measure: output_measure.clone(),
+        privacy_relation: Box::new(move |dist_in, dist_out| match (dist_in, dist_out) {
+            (DataDistance::DistFloat(sens), PrivacyDistance::PureDP(eps)) =>
+                sens / f64::from(sigma.clone()) <= *eps,
+            _ => false
+        }),
+        function: Box::new(move |data| Ok(data))
+    })
+}
+
+
+fn make_noisy_sum_function<NI: 'static, CI: 'static>(
+    input_domain: DataDomain<NI, CI>,
+    input_metric: DataMetric,
+    lower: NI, upper: NI, sigma: NI
+) -> Result<Measurement<NI, CI>, Error>
+    where NI: PartialOrd + Clone + Debug + Zero + Signed,
+          CI: Eq + Clone + Debug,
+          f64: From<NI> {
+
+    let clamp_numeric = make_clamp_numeric(input_domain, input_metric, lower, upper)?;
+
+    let sum = make_sum(
+        clamp_numeric.input_domain.clone(),
+        clamp_numeric.output_metric.clone(),
+    )?;
+
+    let base_laplace = make_base_laplace(
+        sum.input_domain.clone(),
+        sum.output_metric.clone(),
+        PrivacyMeasure::ApproxDP(ApproxDP {}),
+        sigma)?;
+
+    make_mt_chain(base_laplace, make_tt_chain(sum, clamp_numeric, None)?, None)
+}
 

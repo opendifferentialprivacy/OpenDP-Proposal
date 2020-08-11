@@ -13,12 +13,11 @@ trait Metric {
 #[derive(PartialEq, Clone)]
 pub(crate) enum DataMetric {
     DistFloat(DistFloat),
-    L1(L1),
-    L2(L2),
     AddRemove(AddRemove),
     And(AndMetric),
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub(crate) enum PrivacyMeasure {
     PureDP(PureDP),
     ApproxDP(ApproxDP),
@@ -26,12 +25,6 @@ pub(crate) enum PrivacyMeasure {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DistFloat;
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct L1;
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct L2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct AddRemove;
@@ -76,8 +69,6 @@ impl Metric for DistFloat {
 #[derive(Clone, PartialOrd, PartialEq)]
 pub(crate) enum DataDistance {
     DistFloat(f64),
-    L1(f64),
-    L2(f64),
     AddRemove(u16),
     And(Box<DataDistance>, Box<DataDistance>),
 }
@@ -94,7 +85,6 @@ impl Mul<i64> for DataDistance {
     fn mul(self, rhs: i64) -> Self::Output {
         match self {
             DataDistance::DistFloat(d) => DataDistance::DistFloat(d * rhs as f64),
-            DataDistance::L1(d) => DataDistance::L1(d * rhs as f64),
             _ => unimplemented!()
         }
     }
