@@ -189,6 +189,13 @@ derive_integer!(I16Domain, i16);
 derive_integer!(I8Domain, i8);
 
 
+
+struct NumericDomain {
+    lower: Option<Value>,
+    upper: Option<Value>
+}
+
+
 #[derive(PartialEq, Clone)]
 pub(crate) struct StrDomain {
     max_length: Option<usize>,

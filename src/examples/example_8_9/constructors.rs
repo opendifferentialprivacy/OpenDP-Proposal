@@ -1,14 +1,22 @@
 use crate::example_8_9::{Transformation, Error, Measurement, Data};
 use crate::example_8_9::metric::{
     DataDistance, PrivacyDistance, DataMetric, PrivacyMeasure,
-    DistFloat, ApproxDP
+    DistFloat, ApproxDP,
 };
 use std::fmt::Debug;
-use std::ops::Shl;
 use crate::example_8_9::domain::{DataDomain, AtomicDomain, NumericNature, Nature};
 use num::{Signed, Zero};
 
-pub(crate) fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
+// -- generic type key --
+//    NI: numeric input
+//    CI: continuous input
+//    NM: numeric middle
+//    CM: categorical middle
+//    NO: numeric output
+//    CO: continuous output
+
+
+pub fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
     trans_2: Transformation<NM, CM, NO, CO>,
     trans_1: Transformation<NI, CI, NM, CM>,
     hint: Option<Box<fn(&DataDistance, &DataDistance) -> DataDistance>>,
@@ -19,7 +27,6 @@ pub(crate) fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
           CM: 'static + Eq + Clone + Debug,
           NO: 'static + PartialOrd + Clone + Debug,
           CO: 'static + Eq + Clone + Debug {
-
     if trans_1.output_domain != trans_2.input_domain {
         return Err("TT chain: domain mismatch");
     }
@@ -56,7 +63,7 @@ pub(crate) fn make_tt_chain<NI, CI, NM, CM, NO, CO>(
 }
 
 
-pub(crate) fn make_mt_chain<NI, CI, NM, CM>(
+pub fn make_mt_chain<NI, CI, NM, CM>(
     meas: Measurement<NM, CM>,
     trans: Transformation<NI, CI, NM, CM>,
     hint: Option<Box<fn(&DataDistance, &PrivacyDistance) -> DataDistance>>,
@@ -65,7 +72,6 @@ pub(crate) fn make_mt_chain<NI, CI, NM, CM>(
           CI: 'static + Eq + Clone + Debug,
           NM: 'static + PartialOrd + Clone + Debug,
           CM: 'static + Eq + Clone + Debug {
-
     if trans.output_domain != meas.input_domain {
         return Err("MT chain: domain mismatch");
     }
@@ -99,7 +105,7 @@ pub(crate) fn make_mt_chain<NI, CI, NM, CM>(
 }
 
 
-fn make_row_transform<NI, CI, NO, CO>(
+pub fn make_row_transform<NI, CI, NO, CO>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
     output_domain: DataDomain<NO, CO>,
@@ -121,7 +127,7 @@ fn make_row_transform<NI, CI, NO, CO>(
     }
 }
 
-fn make_clamp_numeric<NI, CI>(
+pub fn make_clamp_numeric<NI, CI>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
     lower: NI, upper: NI,
@@ -173,7 +179,7 @@ fn make_clamp_numeric<NI, CI>(
     })
 }
 
-fn make_sum<NI: 'static, CI>(
+pub fn make_sum<NI: 'static, CI>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
 ) -> Result<Transformation<NI, CI, NI, CI>, Error>
@@ -181,19 +187,20 @@ fn make_sum<NI: 'static, CI>(
           CI: Eq + Clone + Debug,
           f64: From<NI> {
 
-    let AtomicDomain {nullity, nature} = if let DataDomain::Vector {
+    let AtomicDomain { nullity, nature } = if let DataDomain::Vector {
         atomic_type, ..
-    } = &input_domain { atomic_type } else {return Err("Sum: input must be a vector")};
+    } = &input_domain { atomic_type } else { return Err("Sum: input must be a vector"); };
 
-    let (lower, upper) = if let Nature::Numeric(NumericNature{
-                                                    lower: Some(lower), upper: Some(upper)}) = nature {(lower.clone(), upper.clone())} else {
-        return Err("Sum: input nature must be numeric")
+    let (lower, upper) = if let Nature::Numeric(
+        NumericNature { lower: Some(lower), upper: Some(upper) }
+    ) = nature { (lower.clone(), upper.clone()) } else {
+        return Err("Sum: input nature must be numeric");
     };
 
     Ok(Transformation {
         output_domain: DataDomain::Scalar(AtomicDomain {
             nature: Nature::Numeric(NumericNature::default()),
-            nullity: *nullity
+            nullity: *nullity,
         }),
         input_domain,
         input_metric,
@@ -204,23 +211,22 @@ fn make_sum<NI: 'static, CI>(
                     *dist_in as f64 * (f64::from(if lower.abs() < upper.abs() { upper.abs() } else { lower.abs() })) <= *dist_out,
                 _ => false
             }),
-        function: Box::new(move |data| Ok(data))
+        function: Box::new(move |data| Ok(data)),
     })
 }
 
 
-fn make_base_laplace<NI: 'static, CI>(
+pub fn make_base_laplace<NI: 'static, CI>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
     output_measure: PrivacyMeasure,
-    sigma: NI
+    sigma: NI,
 ) -> Result<Measurement<NI, CI>, Error>
     where NI: PartialOrd + Clone + Debug + Zero,
           CI: Eq + Clone + Debug,
           f64: From<NI> {
-
     if sigma < NI::zero() {
-        return Err("Base Laplace: sigma must be greater than zero")
+        return Err("Base Laplace: sigma must be greater than zero");
     }
 
     Ok(Measurement {
@@ -232,15 +238,15 @@ fn make_base_laplace<NI: 'static, CI>(
                 sens / f64::from(sigma.clone()) <= *eps,
             _ => false
         }),
-        function: Box::new(move |data| Ok(data))
+        function: Box::new(move |data| Ok(data)),
     })
 }
 
 
-fn make_noisy_sum<NI: 'static, CI: 'static>(
+pub fn make_noisy_sum<NI: 'static, CI: 'static>(
     input_domain: DataDomain<NI, CI>,
     input_metric: DataMetric,
-    lower: NI, upper: NI, sigma: NI
+    lower: NI, upper: NI, sigma: NI,
 ) -> Result<Measurement<NI, CI>, Error>
     where NI: PartialOrd + Clone + Debug + Zero + Signed,
           CI: Eq + Clone + Debug,
@@ -259,7 +265,9 @@ fn make_noisy_sum<NI: 'static, CI: 'static>(
         PrivacyMeasure::ApproxDP(ApproxDP {}),
         sigma)?;
 
-    base_laplace << sum << clamp_numeric
-    // make_mt_chain(base_laplace, make_tt_chain(sum, clamp_numeric, None)?, None)
+    make_mt_chain(base_laplace,
+                  make_tt_chain(sum, clamp_numeric, None)?,
+                  None)
+    // base_laplace << sum << clamp_numeric
 }
 

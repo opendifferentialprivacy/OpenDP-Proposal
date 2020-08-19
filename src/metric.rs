@@ -1,6 +1,7 @@
+use std::fmt::Debug;
 use std::ops::{Mul, Sub};
-use crate::example_8_9::Error;
-use std::fmt::{Debug};
+
+use crate::base::Error;
 
 trait Metric {
     fn is_single_real(&self) -> bool;
@@ -11,26 +12,34 @@ trait Metric {
 }
 
 #[derive(PartialEq, Clone)]
-pub(crate) enum DataMetric {
+pub enum DataMetric {
     DistFloat(DistFloat),
+    L1(L1),
+    L2(L2),
     AddRemove(AddRemove),
     And(AndMetric),
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub(crate) enum PrivacyMeasure {
+pub enum PrivacyMeasure {
     PureDP(PureDP),
     ApproxDP(ApproxDP),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DistFloat;
+pub struct DistFloat;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AddRemove;
+pub struct L1;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct L2;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AddRemove;
 
 #[derive(PartialEq)]
-pub(crate) struct AndMetric(Box<DataMetric>, Box<DataMetric>);
+pub struct AndMetric(Box<DataMetric>, Box<DataMetric>);
+
 impl Clone for AndMetric {
     fn clone(&self) -> Self {
         Self(Box::new(*self.0.clone()), Box::new(*self.1.clone()))
@@ -38,10 +47,10 @@ impl Clone for AndMetric {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PureDP;
+pub struct PureDP;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ApproxDP;
+pub struct ApproxDP;
 
 impl Metric for DistFloat {
     fn is_single_real(&self) -> bool {
@@ -67,14 +76,16 @@ impl Metric for DistFloat {
 
 
 #[derive(Clone, PartialOrd, PartialEq)]
-pub(crate) enum DataDistance {
+pub enum DataDistance {
     DistFloat(f64),
+    L1(f64),
+    L2(f64),
     AddRemove(u16),
     And(Box<DataDistance>, Box<DataDistance>),
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
-pub(crate) enum PrivacyDistance {
+pub enum PrivacyDistance {
     PureDP(f64),
     ApproxDP(f64, f64),
 }
@@ -85,6 +96,7 @@ impl Mul<i64> for DataDistance {
     fn mul(self, rhs: i64) -> Self::Output {
         match self {
             DataDistance::DistFloat(d) => DataDistance::DistFloat(d * rhs as f64),
+            DataDistance::L1(d) => DataDistance::L1(d * rhs as f64),
             _ => unimplemented!()
         }
     }

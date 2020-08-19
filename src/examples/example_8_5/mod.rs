@@ -1,5 +1,6 @@
 use crate::example_8_5::metric::{DataMetric, PrivacyMeasure, DataDistance, PrivacyDistance};
 use crate::example_8_5::domain::{DataDomain, Vector, Scalar, AtomicDomain, IntDomain, I64Domain};
+use std::ops::{Mul, Add};
 
 mod domain;
 mod metric;
@@ -122,27 +123,47 @@ fn make_row_transform(input_domain: DataDomain, output_domain: DataDomain, funct
 //     }
 // }
 
-// issue: need to duplicate this for every atomic domain
-fn make_clamp_i64(input_domain: DataDomain, lower: i64, upper: i64) -> Result<Transformation, Error> {
+enum AtomicValue {
+    F64(f64),
+    F32(f32),
+    I128(i128),
+    I64(i64),
+    I32(i32),
+    I16(i16),
+    I8(i8),
+    U128(u128),
+    U64(u64),
+    U32(u32),
+    U16(u16),
+    U8(u8),
+    Bool(bool),
+    String(String),
+}
+
+fn make_clamp(input_domain: DataDomain, lower: Value, upper: Value) -> Result<Transformation, Error> {
     let mut output_domain = DataDomain::Vector(match &input_domain {
         DataDomain::Vector(Vector {
                                atomic_type,
                                is_empty,
                                length
                            }) => {
-            let (prior_lower, prior_upper) = match *atomic_type.clone() {
-                DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {lower, upper, categories})))) =>
-                    (lower, upper),
-                _ => return Err("invalid atomic type")
-            };
-            let lower = match prior_lower {
-                Some(prior_lower) => prior_lower.max(lower),
-                None => lower
-            };
-            let upper = match prior_upper {
-                Some(prior_upper) => prior_upper.max(upper),
-                None => upper
-            };
+
+            let prior_lower: Value = atomic_type.get_lower();
+            let lower = lower.partial_max(prior_lower)?;
+
+            // let (prior_lower, prior_upper) = match *atomic_type.clone() {
+            //     DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {lower, upper, categories})))) =>
+            //         (lower, upper),
+            //     _ => return Err("invalid atomic type")
+            // };
+            // let lower = match prior_lower {
+            //     Some(prior_lower) => prior_lower.max(lower),
+            //     None => lower
+            // };
+            // let upper = match prior_upper {
+            //     Some(prior_upper) => prior_upper.max(upper),
+            //     None => upper
+            // };
             Vector {
                 atomic_type: Box::new(DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {
                     lower: Some(lower),

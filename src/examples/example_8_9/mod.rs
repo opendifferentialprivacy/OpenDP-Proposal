@@ -2,20 +2,21 @@ use crate::example_8_9::domain::DataDomain;
 use crate::example_8_9::metric::{DataDistance, DataMetric, PrivacyMeasure, PrivacyDistance};
 use std::fmt::Debug;
 
-mod domain;
-mod metric;
-mod constructors;
-mod sugar;
+pub mod domain;
+pub mod metric;
+pub mod constructors;
+pub mod sugar;
 
 type Error = &'static str;
 
+// TODO: execution
 #[derive(Clone, Debug)]
-enum Data {
+pub enum Data {
     Pointer(i64),
     // Literal(Value)
 }
 
-pub(crate) struct Transformation<NI, CI, NO, CO>
+pub struct Transformation<NI, CI, NO, CO>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug,
           NO: PartialOrd + Clone + Debug,
@@ -28,7 +29,7 @@ pub(crate) struct Transformation<NI, CI, NO, CO>
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
 }
 
-pub(crate) struct Measurement<NI, CI>
+pub struct Measurement<NI, CI>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
     input_metric: DataMetric,
@@ -36,6 +37,26 @@ pub(crate) struct Measurement<NI, CI>
     output_measure: PrivacyMeasure,
     privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> bool>,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
+}
+
+impl<NI, CI, NO, CO> Transformation<NI, CI, NO, CO>
+    where NI: PartialOrd + Clone + Debug,
+          CI: Eq + Clone + Debug,
+          NO: PartialOrd + Clone + Debug,
+          CO: Eq + Clone + Debug {
+    pub fn input_domain(&self) -> DataDomain<NI, CI> {
+        self.input_domain.clone()
+    }
+    pub fn output_domain(&self) -> DataDomain<NO, CO> {
+        self.output_domain.clone()
+    }
+}
+impl<NI, CI> Measurement<NI, CI>
+    where NI: PartialOrd + Clone + Debug,
+          CI: Eq + Clone + Debug {
+    pub fn input_domain(&self) -> DataDomain<NI, CI> {
+        self.input_domain.clone()
+    }
 }
 
 struct InteractiveMeasurement<NI, CI, S>
@@ -47,6 +68,8 @@ struct InteractiveMeasurement<NI, CI, S>
     function: Box<dyn Fn(Data) -> Queryable<NI, CI, S>>,
 }
 
+// note: generic over type S
+//     when exposing cross-language, will need to create specific instances with predefined types
 struct Queryable<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
@@ -54,10 +77,14 @@ struct Queryable<NI, CI, S>
     eval: Box<dyn Fn(Measurement<NI, CI>, PrivacyDistance, &S) -> (Result<Data, Error>, S)>,
 }
 
+// change: privacy_loss is an argument
+//    because Measurements no longer contain .privacy_loss attribute
 impl<NI, CI, S> Queryable<NI, CI, S>
     where NI: PartialOrd + Clone + Debug,
           CI: Eq + Clone + Debug {
-    fn query(&mut self, measurement: Measurement<NI, CI>, privacy_loss: PrivacyDistance) -> Result<Data, Error> {
+    fn query(
+        &mut self, measurement: Measurement<NI, CI>, privacy_loss: PrivacyDistance,
+    ) -> Result<Data, Error> {
         let (response, state) = (self.eval)(measurement, privacy_loss, &self.state);
         self.state = state;
         return response;
@@ -84,11 +111,12 @@ fn make_adaptive_composition<NI: 'static, CI: 'static>(
                     query: Measurement<NI, CI>,
                     privacy_loss: PrivacyDistance,
                     // state
-                    (data, privacy_budget): &(Data, PrivacyDistance)| -> (Result<Data, Error>, (Data, PrivacyDistance)) {
+                    (data, privacy_budget): &(Data, PrivacyDistance)
+                | -> (Result<Data, Error>, (Data, PrivacyDistance)) {
+
                     if query.input_domain != input_domain.clone() {
-                        return (Err("domain mismatch"), (data.clone(), privacy_budget.clone()));
-                    }
-                    if privacy_budget < &privacy_loss {
+                        (Err("domain mismatch"), (data.clone(), privacy_budget.clone()))
+                    } else if privacy_budget < &privacy_loss {
                         (Err("insufficient budget"), (data.clone(), privacy_budget.clone()))
                     } else {
                         match privacy_budget - &privacy_loss {

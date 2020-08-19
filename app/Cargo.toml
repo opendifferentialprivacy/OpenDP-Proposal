@@ -1,0 +1,8 @@
+[package]
+name = "opendp_proposal_app"
+version = "0.1.0"
+authors = ["Shoeboxam <shoeboxam@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+opendp_proposal = {path = "../"}
