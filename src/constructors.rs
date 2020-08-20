@@ -89,7 +89,7 @@ pub fn make_clamp(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<
             });
 
             let upper = Some(match &atomic_type.scalar()?.numeric()?.upper {
-                Some(prior_upper) => upper.numeric()?.max(&prior_upper),
+                Some(prior_upper) => upper.numeric()?.min(&prior_upper),
                 None => upper.numeric()?
             });
 

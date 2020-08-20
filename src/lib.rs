@@ -7,6 +7,7 @@ use crate::metric::{DataDistance, PrivacyDistance, Metric, PrivacyMeasure};
 pub mod base;
 pub mod metric;
 pub mod constructors;
+pub mod ffi;
 
 
 

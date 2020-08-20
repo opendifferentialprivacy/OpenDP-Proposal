@@ -236,7 +236,7 @@ pub struct NumericDomain {
 }
 
 impl NumericDomain {
-    fn new(lower: Option<Scalar>, upper: Option<Scalar>) -> Result<NumericDomain, Error> {
+    pub fn new(lower: Option<Scalar>, upper: Option<Scalar>) -> Result<NumericDomain, Error> {
         let lower = lower.map(|l| l.numeric()).transpose()?;
         let upper = upper.map(|u| u.numeric()).transpose()?;
 
