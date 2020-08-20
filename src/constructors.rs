@@ -1,6 +1,6 @@
-use crate::domain::{DataDomain, AtomicDomain, IntDomain, I64Domain, Vector, Scalar};
 use crate::metric::{PrivacyDistance, DataDistance};
-use crate::base::{Error, InteractiveMeasurement, Measurement, Queryable, Data, Transformation, AtomicValue};
+use crate::base::{Data, ValueScalar, DataDomain, AtomicDomain, VectorDomain};
+use crate::{Error, InteractiveMeasurement, Transformation, Measurement, Queryable};
 
 
 pub fn make_adaptive_composition(
@@ -25,10 +25,10 @@ pub fn make_adaptive_composition(
                     (data, privacy_budget): &(Data, PrivacyDistance)
                 | -> (Result<Data, Error>, (Data, PrivacyDistance)) {
                     if query.input_domain != input_domain.clone() {
-                        return (Err("domain mismatch"), (data.clone(), privacy_budget.clone()))
+                        return (Err(Error::DomainMismatch), (data.clone(), privacy_budget.clone()))
                     }
                     if privacy_budget < &privacy_loss {
-                        (Err("insufficient budget"), (data.clone(), privacy_budget.clone()))
+                        (Err(Error::InsufficientBudget), (data.clone(), privacy_budget.clone()))
                     } else {
                         match privacy_budget - &privacy_loss {
                             Ok(new_budget) => ((query.function)(data.clone()), (data.clone(), new_budget)),
