@@ -1,16 +1,33 @@
 
-use crate::{constructors, Transformation, Error};
+use crate::{constructors, Transformation};
 use crate::base::{Domain, VectorDomain, ScalarDomain, NumericDomain};
 
-
 #[no_mangle]
-pub extern "C" fn clamp_f64(lower: f64, upper: f64) -> *mut Result<Transformation, Error> {
-    let input_domain = Domain::Vector(VectorDomain {
+pub extern "C" fn make_default_domain() -> *mut Domain {
+    Box::into_raw(Box::new(Domain::Vector(VectorDomain {
         atomic_type: Box::new(Domain::Scalar(ScalarDomain::Numeric(NumericDomain {
             lower: None, upper: None
         }))),
         is_nonempty: false,
         length: None
-    });
-    Box::into_raw(Box::new(constructors::make_clamp(input_domain, lower.into(), upper.into())))
+    })))
+}
+
+#[no_mangle]
+pub extern "C" fn clamp_f64(
+    input_domain_ptr: *mut Domain, lower: f64, upper: f64
+) -> *mut Transformation {
+    let input_domain = unsafe {
+        assert!(!input_domain_ptr.is_null());
+        &mut *input_domain_ptr
+    }.clone();
+
+    println!("input domain: {:?}", input_domain);
+
+    let clamper = constructors::make_clamp(
+        input_domain,
+        lower.into(),
+        upper.into()).unwrap();
+
+    Box::into_raw(Box::new(clamper))
 }
