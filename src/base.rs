@@ -1,33 +1,61 @@
 use crate::Error;
+use derive_more::{From};
+
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub enum Data {
     Pointer(i64),
     // Literal(Value)
 }
-//
-// macro_rules! apply_numeric {
-//     ($bound:expr, $func:expr) => {
-//         match $bound {
-//             NumericScalar::F32(x) => NumericScalar::F32($func(x)),
-//         }
-//     }
-// }
 
+macro_rules! impl_get_variant {
+    ($target:ty, $name:ident, $variant:path, $result:ty) => {
+
+        impl $target {
+            pub fn $name(&self) -> Result<&$result, Error> {
+                match self {
+                    $variant(x) => Ok(x),
+                    _ => Err(Error::Raw("unexpected variant")),
+                }
+            }
+        }
+    };
+}
+
+#[derive(Clone, Debug)]
 pub enum Value {
     Scalar(Scalar),
     Vector(Vector)
 }
 
 // SCALARS
-#[derive(PartialEq, PartialOrd, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum NumericScalar {
     Float(FloatScalar),
     Int(IntScalar),
     OptionInt(Option<IntScalar>)
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+impl NumericScalar {
+    pub fn max(self, other: &NumericScalar) -> NumericScalar {
+        match self.partial_cmp(other) {
+            Some(Ordering::Equal) | None => self,
+            Some(Ordering::Greater) => self,
+            Some(Ordering::Less) => other.clone()
+        }
+    }
+
+    pub fn min(self, other: &NumericScalar) -> NumericScalar {
+        match self.partial_cmp(other) {
+            Some(Ordering::Equal) | None => self,
+            Some(Ordering::Greater) => other.clone(),
+            Some(Ordering::Less) => self
+        }
+    }
+}
+
+#[derive(From, PartialEq, Eq, Clone, Debug)]
 pub enum CategoricalScalar {
     Bool(bool),
     OptionBool(Option<bool>),
@@ -37,7 +65,7 @@ pub enum CategoricalScalar {
     OptionInt(Option<IntScalar>)
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
 pub enum IntScalar {
     I8(i8),
     I16(i16),
@@ -51,13 +79,13 @@ pub enum IntScalar {
     U128(u128),
 }
 
-#[derive(PartialEq, PartialOrd, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum FloatScalar {
     F32(f32),
     F64(f64),
 }
 
-#[derive(Clone, Debug)]
+#[derive(From, Clone, Debug)]
 pub enum Scalar {
     Bool(bool),
     OptionBool(Option<bool>),
@@ -70,7 +98,7 @@ pub enum Scalar {
 
 
 impl Scalar {
-    fn numeric(self) -> Result<NumericScalar, Error> {
+    pub(crate) fn numeric(self) -> Result<NumericScalar, Error> {
         Ok(match self {
             Scalar::Int(v) => NumericScalar::Int(v),
             Scalar::OptionInt(v) => NumericScalar::OptionInt(v),
@@ -78,7 +106,7 @@ impl Scalar {
             _ => return Err(Error::Raw("invalid atomic type"))
         })
     }
-    fn categorical(self) -> Result<CategoricalScalar, Error> {
+    pub(crate) fn categorical(self) -> Result<CategoricalScalar, Error> {
         Ok(match self {
             Scalar::Bool(v) => CategoricalScalar::Bool(v),
             Scalar::OptionBool(v) => CategoricalScalar::OptionBool(v),
@@ -92,14 +120,14 @@ impl Scalar {
 }
 
 // VECTORS
-#[derive(PartialEq, PartialOrd, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum NumericVector {
     Float(FloatVector),
     Int(IntVector),
     OptionInt(OptionIntVector)
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(From, PartialEq, Eq, Clone, Debug)]
 pub enum CategoricalVector {
     Bool(Vec<bool>),
     OptionBool(Vec<Option<bool>>),
@@ -109,7 +137,7 @@ pub enum CategoricalVector {
     OptionInt(OptionIntVector)
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
 pub enum IntVector {
     I128(Vec<i128>),
     I64(Vec<i64>),
@@ -123,7 +151,7 @@ pub enum IntVector {
     U8(Vec<u8>),
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
 pub enum OptionIntVector {
     I128(Vec<Option<i128>>),
     I64(Vec<Option<i64>>),
@@ -137,13 +165,13 @@ pub enum OptionIntVector {
     U8(Vec<Option<u8>>),
 }
 
-#[derive(PartialEq, PartialOrd, Clone, Debug)]
+#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum FloatVector {
     F32(Vec<f32>),
     F64(Vec<f64>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(From, Clone, Debug)]
 pub enum Vector {
     Bool(Vec<bool>),
     OptionBool(Vec<Option<bool>>),
@@ -177,11 +205,14 @@ impl Vector {
 }
 
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(From, PartialEq, Clone, Debug)]
 pub enum Domain {
     Scalar(ScalarDomain),
     Vector(VectorDomain<i64>)
 }
+
+impl_get_variant!(Domain, scalar, Domain::Scalar, ScalarDomain);
+impl_get_variant!(Domain, vector, Domain::Vector, VectorDomain<i64>);
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorDomain<TLength: PartialEq + Clone> {
@@ -190,16 +221,18 @@ pub struct VectorDomain<TLength: PartialEq + Clone> {
     pub length: Option<TLength>
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(From, PartialEq, Clone, Debug)]
 pub enum ScalarDomain {
     Numeric(NumericDomain),
     Categorical(CategoricalDomain)
 }
+impl_get_variant!(ScalarDomain, numeric, ScalarDomain::Numeric, NumericDomain);
+impl_get_variant!(ScalarDomain, categorical, ScalarDomain::Categorical, CategoricalDomain);
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct NumericDomain {
-    lower: Option<NumericScalar>,
-    upper: Option<NumericScalar>
+    pub(crate) lower: Option<NumericScalar>,
+    pub(crate) upper: Option<NumericScalar>
 }
 
 impl NumericDomain {
@@ -294,3 +327,28 @@ impl_categorical_eqtype!(CategoricalVector);
 impl EqType for IntVector {}
 impl EqType for FloatVector {}
 impl EqType for OptionIntVector {}
+
+// serialization necessary for composing measurements constructed across multiple processes
+
+macro_rules! impl_scalar_from {
+    ($scalar_type:ty, $enum_type:ty) => {
+        impl From<$scalar_type> for Scalar {
+            fn from(x: $scalar_type) -> Self {
+                Scalar::from(<$enum_type>::from(x))
+            }
+        }
+    }
+}
+
+impl_scalar_from!(f64, FloatScalar);
+impl_scalar_from!(f32, FloatScalar);
+impl_scalar_from!(i8, IntScalar);
+impl_scalar_from!(i16, IntScalar);
+impl_scalar_from!(i32, IntScalar);
+impl_scalar_from!(i64, IntScalar);
+impl_scalar_from!(i128, IntScalar);
+impl_scalar_from!(u8, IntScalar);
+impl_scalar_from!(u16, IntScalar);
+impl_scalar_from!(u32, IntScalar);
+impl_scalar_from!(u64, IntScalar);
+impl_scalar_from!(u128, IntScalar);

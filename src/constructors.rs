@@ -1,5 +1,5 @@
 use crate::metric::{PrivacyDistance, DataDistance};
-use crate::base::{Data, Domain};
+use crate::base::{Data, Domain, Scalar, VectorDomain, ScalarDomain, NumericDomain};
 use crate::{Error, InteractiveMeasurement, Transformation, Measurement, Queryable};
 
 
@@ -75,52 +75,42 @@ pub fn make_row_transform(
 
 
 
-// pub fn make_clamp(input_domain: DataDomain, lower: AtomicValue, upper: AtomicValue) -> Result<Transformation, Error> {
-//     let mut output_domain = DataDomain::Vector(match &input_domain {
-//         DataDomain::Vector(Vector {
-//                                atomic_type,
-//                                is_empty,
-//                                length
-//                            }) => {
-//
-//             let prior_lower: AtomicValue = atomic_type.get_lower();
-//             let lower = lower.partial_max(prior_lower)?;
-//             let prior_upper: AtomicValue = atomic_type.get_upper();
-//             let upper = upper.partial_max(prior_upper)?;
-//
-//             // let (prior_lower, prior_upper) = match *atomic_type.clone() {
-//             //     DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {lower, upper, categories})))) =>
-//             //         (lower, upper),
-//             //     _ => return Err("invalid atomic type")
-//             // };
-//             // let lower = match prior_lower {
-//             //     Some(prior_lower) => prior_lower.max(lower),
-//             //     None => lower
-//             // };
-//             // let upper = match prior_upper {
-//             //     Some(prior_upper) => prior_upper.max(upper),
-//             //     None => upper
-//             // };
-//             Vector {
-//                 atomic_type: Box::new(DataDomain::Scalar(Scalar(AtomicDomain::Int(IntDomain::I64(I64Domain {
-//                     lower: Some(lower),
-//                     upper: Some(upper),
-//                     categories: None,
-//                 }))))),
-//                 is_empty: *is_empty,
-//                 length: length.clone(),
-//             }
-//         },
-//         _ => return Err("invalid input domain")
-//     });
-//     Ok(Transformation {
-//         input_domain,
-//         output_domain,
-//         stability_relation: Box::new(move |in_dist: DataDistance, out_dist| in_dist <= out_dist),
-//         // issue: how to differentiate between calls out to different execution environments
-//         function: Box::new(move |data| Ok(data))
-//     })
-// }
+pub fn make_clamp(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
+    let output_domain = Domain::Vector(match &input_domain {
+        Domain::Vector(VectorDomain {
+                               atomic_type,
+                               is_nonempty,
+                               length
+                           }) => {
+
+            let lower = Some(match &atomic_type.scalar()?.numeric()?.lower {
+                Some(prior_lower) => lower.numeric()?.max(&prior_lower),
+                None => lower.numeric()?
+            });
+
+            let upper = Some(match &atomic_type.scalar()?.numeric()?.upper {
+                Some(prior_upper) => upper.numeric()?.max(&prior_upper),
+                None => upper.numeric()?
+            });
+
+            VectorDomain {
+                atomic_type: Box::new(Domain::Scalar(ScalarDomain::Numeric(NumericDomain {
+                    lower, upper
+                }))),
+                is_nonempty: *is_nonempty,
+                length: length.clone(),
+            }
+        },
+        _ => return Err(Error::Raw("invalid input domain"))
+    });
+    Ok(Transformation {
+        input_domain,
+        output_domain,
+        stability_relation: Box::new(move |in_dist: DataDistance, out_dist| in_dist <= out_dist),
+        // issue: how to differentiate between calls out to different execution environments
+        function: Box::new(move |data| Ok(data))
+    })
+}
 
 // fn make_sum() -> Transformation {
 //
