@@ -1,7 +1,10 @@
 // mod examples;
+#![allow(dead_code)]
+
+use crate::base::{Domain, Data};
+use crate::metric::{DataDistance, PrivacyDistance, Metric, PrivacyMeasure};
 
 pub mod base;
-pub mod domain;
 pub mod metric;
 pub mod constructors;
 
@@ -12,30 +15,34 @@ pub mod constructors;
 #[non_exhaustive]
 pub enum Error {
     #[error("{1}")]
-    Unknown(#[source] std::io::Error, &'static str),
+    Default(#[source] std::io::Error, &'static str),
+    #[error("Domain mismatch")]
     DomainMismatch,
-    InsufficientBudget
+    #[error("Insufficient budget")]
+    InsufficientBudget,
+    #[error("{0}")]
+    Raw(&'static str)
 }
 
 
 
 pub struct Transformation {
-    pub(crate) input_domain: DataDomain,
-    pub(crate) output_domain: DataDomain,
+    pub(crate) input_domain: Domain,
+    pub(crate) output_domain: Domain,
     pub(crate) stability_relation: Box<dyn Fn(DataDistance, DataDistance) -> bool>,
     pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
 }
 
 pub struct Measurement {
-    pub(crate) input_metric: DataMetric,
-    pub(crate) input_domain: DataDomain,
+    pub(crate) input_metric: Metric,
+    pub(crate) input_domain: Domain,
     pub(crate) output_measure: PrivacyMeasure,
     pub(crate) privacy_relation: Box<dyn Fn(DataDistance, PrivacyDistance) -> bool>,
     pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
 }
 
 pub struct InteractiveMeasurement {
-    pub(crate) input_domain: DataDomain,
+    pub(crate) input_domain: Domain,
     pub(crate) input_distance: DataDistance,
     pub(crate) privacy_loss: PrivacyDistance,
     pub(crate) function: Box<dyn Fn(Data) -> Queryable<(Data, PrivacyDistance)>>

@@ -1,10 +1,10 @@
 use crate::metric::{PrivacyDistance, DataDistance};
-use crate::base::{Data, ValueScalar, DataDomain, AtomicDomain, VectorDomain};
+use crate::base::{Data, Domain};
 use crate::{Error, InteractiveMeasurement, Transformation, Measurement, Queryable};
 
 
 pub fn make_adaptive_composition(
-    input_domain: DataDomain,
+    input_domain: Domain,
     input_distance: DataDistance,
     privacy_budget: PrivacyDistance
 ) -> InteractiveMeasurement {
@@ -61,14 +61,14 @@ pub fn postprocess(
 
 
 pub fn make_row_transform(
-    input_domain: DataDomain,
-    output_domain: DataDomain,
+    input_domain: Domain,
+    output_domain: Domain,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>
 ) -> Transformation {
     Transformation {
         input_domain,
         output_domain,
-        stability_relation: Box::new(move |input_distance: DataDistance, output_distance: DataDistance| -> bool { true }),
+        stability_relation: Box::new(move |_input_distance: DataDistance, _output_distance: DataDistance| -> bool { true }),
         function,
     }
 }

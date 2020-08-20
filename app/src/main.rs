@@ -2,7 +2,7 @@ use opendp_proposal;
 use opendp_proposal::base::{ValueScalar, Transformation};
 use opendp_proposal::constructors::*;
 use opendp_proposal::domain::{AtomicDomain, DataDomain, I64Domain, IntDomain, Scalar, VectorDomain};
-use opendp_proposal::metric::{AddRemove, DataMetric};
+use opendp_proposal::metric::{AddRemove, Metric};
 
 // generic perks:
 // - any (one) atomic type

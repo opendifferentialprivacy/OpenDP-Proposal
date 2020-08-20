@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 use std::ops::{Mul, Sub};
 
-use crate::base::Error;
+use crate::Error;
 
-trait Metric {
+trait MathMetric {
     fn is_single_real(&self) -> bool;
     fn has_upper_bound(&self) -> bool;
     fn is_triangular(&self) -> bool;
@@ -12,7 +12,7 @@ trait Metric {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum DataMetric {
+pub enum Metric {
     DistFloat(DistFloat),
     L1(L1),
     L2(L2),
@@ -38,7 +38,7 @@ pub struct L2;
 pub struct AddRemove;
 
 #[derive(PartialEq)]
-pub struct AndMetric(Box<DataMetric>, Box<DataMetric>);
+pub struct AndMetric(Box<Metric>, Box<Metric>);
 
 impl Clone for AndMetric {
     fn clone(&self) -> Self {
@@ -52,7 +52,7 @@ pub struct PureDP;
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApproxDP;
 
-impl Metric for DistFloat {
+impl MathMetric for DistFloat {
     fn is_single_real(&self) -> bool {
         true
     }
@@ -111,7 +111,7 @@ impl Sub<&PrivacyDistance> for &PrivacyDistance {
                 PrivacyDistance::ApproxDP(eps_l + eps_r, del_l + del_r),
             (PrivacyDistance::PureDP(eps_l), PrivacyDistance::PureDP(eps_r)) =>
                 PrivacyDistance::PureDP(eps_l + eps_r),
-            _ => return Err("privacy units must match")
+            _ => return Err(Error::Raw("privacy units must match"))
         })
     }
 }
