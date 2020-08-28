@@ -22,7 +22,7 @@ pub extern "C" fn clamp_f64(
 
     println!("input domain: {:?}", input_domain);
 
-    let clamper = constructors::make_clamp(
+    let clamper = constructors::preprocess::make_clamp_numeric(
         input_domain,
         lower.into(),
         upper.into()).unwrap();
