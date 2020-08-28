@@ -77,6 +77,7 @@ impl MathMetric for DistFloat {
 
 #[derive(Clone, PartialOrd, PartialEq)]
 pub enum DataDistance {
+    Symmetric(u32),
     DistFloat(f64),
     L1(f64),
     L2(f64),

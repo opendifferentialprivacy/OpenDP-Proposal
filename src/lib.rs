@@ -19,10 +19,16 @@ pub enum Error {
     Default(#[source] std::io::Error, &'static str),
     #[error("Domain mismatch")]
     DomainMismatch,
+    #[error("Atomic Mismatch")]
+    AtomicMismatch,
+    #[error("Invalid Domain")]
+    InvalidDomain,
     #[error("Insufficient budget")]
     InsufficientBudget,
+    #[error("Potential Nullity")]
+    PotentialNullity,
     #[error("{0}")]
-    Raw(&'static str)
+    Raw(&'static str),
 }
 
 
@@ -30,8 +36,9 @@ pub enum Error {
 pub struct Transformation {
     pub(crate) input_domain: Domain,
     pub(crate) output_domain: Domain,
-    pub(crate) stability_relation: Box<dyn Fn(DataDistance, DataDistance) -> bool>,
-    pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
+    pub(crate) stability_relation: Box<dyn Fn(&DataDistance, &DataDistance) -> bool>,
+    pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>,
+    pub(crate) hint: Option<Box<dyn Fn(&DataDistance, &DataDistance) -> DataDistance>>
 }
 
 pub struct Measurement {

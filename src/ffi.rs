@@ -1,13 +1,11 @@
 
 use crate::{constructors, Transformation};
-use crate::base::{Domain, VectorDomain, ScalarDomain, NumericDomain};
+use crate::base::{Domain, VectorDomain};
 
 #[no_mangle]
 pub extern "C" fn make_default_domain() -> *mut Domain {
     Box::into_raw(Box::new(Domain::Vector(VectorDomain {
-        atomic_type: Box::new(Domain::Scalar(ScalarDomain::Numeric(NumericDomain {
-            lower: None, upper: None
-        }))),
+        atomic_type: Box::new(Domain::numeric_scalar(None, None, false).unwrap()),
         is_nonempty: false,
         length: None
     })))

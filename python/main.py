@@ -2,11 +2,14 @@ import ctypes
 import os
 import sys
 
+
 class Domain(ctypes.Structure):
     pass
 
+
 class Transformation(ctypes.Structure):
     pass
+
 
 class LibraryWrapper(object):
     def __init__(self):

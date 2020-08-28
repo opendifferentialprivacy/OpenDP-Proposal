@@ -1,12 +1,13 @@
-use crate::Error;
-use derive_more::{From};
-
 use std::cmp::Ordering;
+
+use indexmap::map::IndexMap;
+
+use crate::Error;
 
 #[derive(Clone, Debug)]
 pub enum Data {
     Pointer(i64),
-    // Literal(Value)
+    Literal(Value),
 }
 
 macro_rules! impl_get_variant {
@@ -20,7 +21,7 @@ macro_rules! impl_get_variant {
                 }
             }
         }
-    };
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -30,7 +31,10 @@ pub enum Value {
 }
 
 // SCALARS
-#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(
+PartialEq, PartialOrd, Clone, Debug,
+derive_more::From
+)]
 pub enum NumericScalar {
     Float(FloatScalar),
     Int(IntScalar),
@@ -38,24 +42,26 @@ pub enum NumericScalar {
 }
 
 impl NumericScalar {
-    pub fn max(self, other: &NumericScalar) -> NumericScalar {
-        match self.partial_cmp(other) {
-            Some(Ordering::Equal) | None => self,
+    pub fn max(&self, other: &NumericScalar) -> Result<NumericScalar, crate::Error> {
+        Ok(match self.partial_cmp(other) {
+            Some(Ordering::Equal) => self,
             Some(Ordering::Greater) => self,
-            Some(Ordering::Less) => other.clone()
-        }
+            Some(Ordering::Less) => other,
+            None => return Err(crate::Error::AtomicMismatch)
+        }.clone())
     }
 
-    pub fn min(self, other: &NumericScalar) -> NumericScalar {
-        match self.partial_cmp(other) {
-            Some(Ordering::Equal) | None => self,
-            Some(Ordering::Greater) => other.clone(),
-            Some(Ordering::Less) => self
-        }
+    pub fn min(&self, other: &NumericScalar) -> Result<NumericScalar, crate::Error> {
+        Ok(match self.partial_cmp(other) {
+            Some(Ordering::Equal) => self,
+            Some(Ordering::Greater) => other,
+            Some(Ordering::Less) => self,
+            None => return Err(crate::Error::AtomicMismatch)
+        }.clone())
     }
 }
 
-#[derive(From, PartialEq, Eq, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, Eq, Clone, Debug)]
 pub enum CategoricalScalar {
     Bool(bool),
     OptionBool(Option<bool>),
@@ -65,7 +71,10 @@ pub enum CategoricalScalar {
     OptionInt(Option<IntScalar>)
 }
 
-#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(
+PartialEq, PartialOrd, Eq, Clone, Debug,
+derive_more::Add, derive_more::Sub, derive_more::From
+)]
 pub enum IntScalar {
     I8(i8),
     I16(i16),
@@ -79,13 +88,16 @@ pub enum IntScalar {
     U128(u128),
 }
 
-#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(
+derive_more::From, PartialEq, PartialOrd, Clone, Debug,
+derive_more::Add, derive_more::Sub
+)]
 pub enum FloatScalar {
     F32(f32),
     F64(f64),
 }
 
-#[derive(From, Clone, Debug)]
+#[derive(Clone, Debug, derive_more::From)]
 pub enum Scalar {
     Bool(bool),
     OptionBool(Option<bool>),
@@ -120,14 +132,14 @@ impl Scalar {
 }
 
 // VECTORS
-#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum NumericVector {
     Float(FloatVector),
     Int(IntVector),
     OptionInt(OptionIntVector)
 }
 
-#[derive(From, PartialEq, Eq, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, Eq, Clone, Debug)]
 pub enum CategoricalVector {
     Bool(Vec<bool>),
     OptionBool(Vec<Option<bool>>),
@@ -137,7 +149,7 @@ pub enum CategoricalVector {
     OptionInt(OptionIntVector)
 }
 
-#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, PartialOrd, Eq, Clone, Debug)]
 pub enum IntVector {
     I128(Vec<i128>),
     I64(Vec<i64>),
@@ -151,7 +163,7 @@ pub enum IntVector {
     U8(Vec<u8>),
 }
 
-#[derive(From, PartialEq, PartialOrd, Eq, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, PartialOrd, Eq, Clone, Debug)]
 pub enum OptionIntVector {
     I128(Vec<Option<i128>>),
     I64(Vec<Option<i64>>),
@@ -165,13 +177,13 @@ pub enum OptionIntVector {
     U8(Vec<Option<u8>>),
 }
 
-#[derive(From, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, PartialOrd, Clone, Debug)]
 pub enum FloatVector {
     F32(Vec<f32>),
     F64(Vec<f64>),
 }
 
-#[derive(From, Clone, Debug)]
+#[derive(derive_more::From, Clone, Debug)]
 pub enum Vector {
     Bool(Vec<bool>),
     OptionBool(Vec<Option<bool>>),
@@ -205,40 +217,108 @@ impl Vector {
 }
 
 
-#[derive(From, PartialEq, Clone, Debug)]
+#[derive(derive_more::From, PartialEq, Clone, Debug)]
 pub enum Domain {
     Scalar(ScalarDomain),
-    Vector(VectorDomain<i64>)
+    Vector(VectorDomain<usize>),
+    Dataframe(DataframeDomain<usize>),
+    Matrix(MatrixDomain<usize>),
+}
+
+impl Domain {
+    // TODO: should we have domain constructors at this fine granularity?
+    pub fn numeric_scalar(
+        lower: Option<NumericScalar>, upper: Option<NumericScalar>, may_have_nullity: bool,
+    ) -> Result<Self, crate::Error> {
+        Ok(Domain::Scalar(ScalarDomain {
+            may_have_nullity,
+            nature: Nature::Numeric(NumericDomain::new(lower, upper)?),
+        }))
+    }
+
+    pub fn assert_non_null(&self) -> Result<(), crate::Error> {
+        Ok(match self {
+            Domain::Scalar(domain) => domain.assert_non_null()?,
+            Domain::Vector(domain) => domain.atomic_type.assert_non_null()?,
+            Domain::Dataframe(domain) => domain.assert_non_null()?,
+            Domain::Matrix(domain) => domain.assert_non_null()?
+        })
+    }
 }
 
 impl_get_variant!(Domain, scalar, Domain::Scalar, ScalarDomain);
-impl_get_variant!(Domain, vector, Domain::Vector, VectorDomain<i64>);
+impl_get_variant!(Domain, vector, Domain::Vector, VectorDomain<usize>);
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct VectorDomain<TLength: PartialEq + Clone> {
     pub atomic_type: Box<Domain>,
     pub is_nonempty: bool,
-    pub length: Option<TLength>
+    pub length: Option<TLength>,
 }
 
-#[derive(From, PartialEq, Clone, Debug)]
-pub enum ScalarDomain {
-    Numeric(NumericDomain),
-    Categorical(CategoricalDomain)
+#[derive(PartialEq, Clone, Debug)]
+pub struct MatrixDomain<TLength: PartialEq + Clone> {
+    pub atomic_type: Box<Domain>,
+    pub is_nonempty: bool,
+    pub length: Option<TLength>,
+    pub columns: i64,
 }
-impl_get_variant!(ScalarDomain, numeric, ScalarDomain::Numeric, NumericDomain);
-impl_get_variant!(ScalarDomain, categorical, ScalarDomain::Categorical, CategoricalDomain);
+
+impl<TLength: Clone + PartialOrd> MatrixDomain<TLength> {
+    pub fn assert_non_null(&self) -> Result<(), crate::Error> {
+        self.atomic_type.assert_non_null()
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct DataframeDomain<TLength: PartialEq + Clone> {
+    pub columns: IndexMap<String, Domain>,
+    pub is_nonempty: bool,
+    pub length: Option<TLength>,
+}
+
+impl<TLength: Clone + PartialOrd> DataframeDomain<TLength> {
+    pub fn assert_non_null(&self) -> Result<(), crate::Error> {
+        for atomic_type in self.columns.values() {
+            atomic_type.assert_non_null()?
+        }
+        Ok(())
+    }
+}
+
+#[derive(derive_more::From, PartialEq, Clone, Debug)]
+pub enum Nature {
+    Numeric(NumericDomain),
+    Categorical(CategoricalDomain),
+}
+
+impl_get_variant!(Nature, numeric, Nature::Numeric, NumericDomain);
+impl_get_variant!(Nature, categorical, Nature::Categorical, CategoricalDomain);
+
+#[derive(derive_more::From, PartialEq, Clone, Debug)]
+pub struct ScalarDomain {
+    pub may_have_nullity: bool,
+    pub nature: Nature,
+}
+
+impl ScalarDomain {
+    pub fn assert_non_null(&self) -> Result<(), crate::Error> {
+        if self.may_have_nullity {
+            Err(Error::PotentialNullity)
+        } else { Ok(()) }
+    }
+}
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct NumericDomain {
     pub(crate) lower: Option<NumericScalar>,
-    pub(crate) upper: Option<NumericScalar>
+    pub(crate) upper: Option<NumericScalar>,
 }
 
 impl NumericDomain {
-    pub fn new(lower: Option<Scalar>, upper: Option<Scalar>) -> Result<NumericDomain, Error> {
-        let lower = lower.map(|l| l.numeric()).transpose()?;
-        let upper = upper.map(|u| u.numeric()).transpose()?;
+    pub fn new(lower: Option<NumericScalar>, upper: Option<NumericScalar>) -> Result<NumericDomain, Error> {
+        // let lower = lower.map(|l| l.numeric()).transpose()?;
+        // let upper = upper.map(|u| u.numeric()).transpose()?;
 
         if let (Some(l), Some(u)) = (&lower, &upper) {
             if !l.eq_type(&u) {
@@ -328,8 +408,6 @@ impl EqType for IntVector {}
 impl EqType for FloatVector {}
 impl EqType for OptionIntVector {}
 
-// serialization necessary for composing measurements constructed across multiple processes
-
 macro_rules! impl_scalar_from {
     ($scalar_type:ty, $enum_type:ty) => {
         impl From<$scalar_type> for Scalar {
@@ -352,3 +430,59 @@ impl_scalar_from!(u16, IntScalar);
 impl_scalar_from!(u32, IntScalar);
 impl_scalar_from!(u64, IntScalar);
 impl_scalar_from!(u128, IntScalar);
+
+// impl<T> Mul<T> for NumericScalar
+//     where T: From<i64> {
+//     type Output = NumericScalar;
+//
+//     fn mul(self, rhs: T) -> Self::Output {
+//         let rhs = i64::from(rhs);
+//         match self {
+//             NumericScalar::Float(v) => NumericScalar::Float(v * rhs),
+//             NumericScalar::Int(v) => NumericScalar::Int(v * rhs),
+//             NumericScalar::OptionInt(v) => NumericScalar::OptionInt(v.map(|v| v * rhs)),
+//         }
+//     }
+// }
+//
+// impl<T> Mul<T> for FloatScalar
+//     where T: From<i64> {
+//     type Output = FloatScalar;
+//
+//     fn mul(self, rhs: T) -> Self::Output {
+//         let rhs = i64::from(rhs);
+//         match self {
+//             FloatScalar::F32(v) => FloatScalar::F32(v * rhs as f32),
+//             FloatScalar::F64(v) => FloatScalar::F64(v * rhs as f64),
+//         }
+//     }
+// }
+//
+// impl<T> Mul<T> for IntScalar
+//     where T: From<i64> {
+//     type Output = IntScalar;
+//
+//     fn mul(self, rhs: T) -> Self::Output {
+//         let rhs = i64::from(rhs);
+//         match self {
+//             IntScalar::I8(v) => IntScalar::I8(v * rhs as i8),
+//             IntScalar::I16(v) => IntScalar::I16(v * rhs as i16),
+//             IntScalar::I32(v) => IntScalar::I32(v * rhs as i32),
+//             IntScalar::I64(v) => IntScalar::I64(v * rhs as i64),
+//             IntScalar::I128(v) => IntScalar::I128(v * rhs as i128),
+//             IntScalar::U8(v) => IntScalar::U8(v * rhs as u8),
+//             IntScalar::U16(v) => IntScalar::U16(v * rhs as u16),
+//             IntScalar::U32(v) => IntScalar::U32(v * rhs as u32),
+//             IntScalar::U64(v) => IntScalar::U64(v * rhs as u64),
+//             IntScalar::U128(v) => IntScalar::U128(v * rhs as u128),
+//         }
+//     }
+// }
+//
+// impl Mul<NumericScalar> for NumericScalar {
+//     type Output = Result<NumericScalar, crate::Error>;
+//
+//     fn mul(self, rhs: NumericScalar) -> Self::Output {
+//         unimplemented!()
+//     }
+// }
