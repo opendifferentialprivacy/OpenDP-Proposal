@@ -10,11 +10,15 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
         let lower = lower.clone().numeric()?;
         let upper = upper.clone().numeric()?;
 
-        let lower = Some(nature.numeric()?.lower.as_ref()
+        let NumericDomain {
+            lower: prior_lower, upper: prior_upper
+        } = nature.numeric()?;
+
+        let lower = Some(prior_lower.as_ref()
             .map(|prior_lower| lower.max(&prior_lower))
             .transpose()?.unwrap_or(lower));
 
-        let upper = Some(nature.numeric()?.upper.as_ref()
+        let upper = Some(prior_upper.as_ref()
             .map(|prior_upper| upper.min(&prior_upper))
             .transpose()?.unwrap_or(upper));
 
@@ -135,7 +139,7 @@ pub mod test_impute_numeric {
             &input_domain,
             NumericScalar::Int(20u64.into()),
             NumericScalar::Int(10u64.into())).is_err() {
-            panic!("TODO")
+            panic!("Impute must fail if bounds are unordered.")
         }
     }
 }

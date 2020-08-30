@@ -221,8 +221,8 @@ impl Vector {
 pub enum Domain {
     Scalar(ScalarDomain),
     Vector(VectorDomain<usize>),
-    Dataframe(DataframeDomain<usize>),
     Matrix(MatrixDomain<usize>),
+    Dataframe(DataframeDomain<usize>)
 }
 
 impl Domain {
