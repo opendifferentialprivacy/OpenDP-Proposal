@@ -14,15 +14,15 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
             lower: prior_lower, upper: prior_upper
         } = nature.numeric()?;
 
-        let lower = Some(prior_lower.as_ref()
+        let lower = prior_lower.as_ref()
             .map(|prior_lower| lower.max(&prior_lower))
-            .transpose()?.unwrap_or(lower));
+            .transpose()?.unwrap_or(lower);
 
-        let upper = Some(prior_upper.as_ref()
+        let upper = prior_upper.as_ref()
             .map(|prior_upper| upper.min(&prior_upper))
-            .transpose()?.unwrap_or(upper));
+            .transpose()?.unwrap_or(upper);
 
-        Domain::numeric_scalar(lower, upper, may_have_nullity)
+        Domain::numeric_scalar(Some(lower), Some(upper), may_have_nullity)
     };
 
     let output_domain = match input_domain.clone() {
@@ -48,7 +48,7 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
         output_domain,
         stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| in_dist <= out_dist),
         // issue: how to differentiate between calls out to different execution environments
-        function: Box::new(move |data: Data| Ok(data)),
+        function: Box::new(move |_data: Data| Err(crate::Error::NotImplemented)),
         hint: Some(Box::new(move |_in_dist: &DataDistance, out_dist: &DataDistance| out_dist.clone())),
     })
 }
@@ -109,10 +109,7 @@ pub fn make_impute_numeric(
         input_domain: input_domain.clone(),
         output_domain,
         stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| d_in <= d_out),
-        function: Box::new(move |data| {
-            // TODO: apply lower and upper
-            Ok(data)
-        }),
+        function: Box::new(move |_data| Err(crate::Error::NotImplemented)),
         hint: None,
     })
 }

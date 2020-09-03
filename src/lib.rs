@@ -29,6 +29,8 @@ pub enum Error {
     PotentialNullity,
     #[error("{0}")]
     Raw(&'static str),
+    #[error("Not Implemented")]
+    NotImplemented
 }
 
 

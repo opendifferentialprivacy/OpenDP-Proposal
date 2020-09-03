@@ -5,6 +5,7 @@ use crate::Transformation;
 pub mod chain;
 pub mod preprocess;
 pub mod aggregate;
+pub mod mapping;
 
 
 pub fn make_row_transform(

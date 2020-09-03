@@ -27,7 +27,8 @@ macro_rules! impl_get_variant {
 #[derive(Clone, Debug)]
 pub enum Value {
     Scalar(Scalar),
-    Vector(Vector)
+    Vector(Vector),
+    Dataframe(Dataframe)
 }
 
 // SCALARS
@@ -216,6 +217,10 @@ impl Vector {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Dataframe {
+    pub columns: IndexMap<String, Value>
+}
 
 #[derive(derive_more::From, PartialEq, Clone, Debug)]
 pub enum Domain {
