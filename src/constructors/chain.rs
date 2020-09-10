@@ -1,12 +1,12 @@
-use crate::{Transformation, Measurement};
-use crate::metric::{DataDistance, PrivacyDistance};
+use crate::{Transformation, Measurement, Error};
+use crate::base::metric::{DataDistance, PrivacyDistance};
 use crate::base::Data;
+
 
 pub fn make_tt_chain(
     trans_2: Transformation, trans: Transformation,
     hint: Option<Box<dyn Fn(&DataDistance, &DataDistance) -> DataDistance>>,
-    // hint_hint: Option<Box<dyn Fn(&>>
-) -> Result<Transformation, crate::Error> {
+) -> Result<Transformation, Error> {
     if trans_2.input_domain != trans.output_domain {
         return Err(crate::Error::DomainMismatch)
     }
@@ -41,8 +41,7 @@ pub fn make_tt_chain(
 pub fn make_mt_chain(
     meas: Measurement, trans: Transformation,
     hint: Option<Box<dyn Fn(&DataDistance, &PrivacyDistance) -> DataDistance>>,
-    // hint_hint: Option<Box<dyn Fn(&>>
-) -> Result<Measurement, crate::Error> {
+) -> Result<Measurement, Error> {
     if meas.input_domain != trans.output_domain {
         return Err(crate::Error::DomainMismatch)
     }

@@ -1,17 +1,17 @@
-use crate::base::{Domain, Data};
-use crate::metric::DataDistance;
-use crate::Transformation;
+use crate::base::{Data};
+use crate::{Transformation, Error};
+use crate::base::domain::Domain;
+use crate::base::metric::DataDistance;
 
 pub mod chain;
 pub mod preprocess;
 pub mod aggregate;
-pub mod mapping;
 
 
 pub fn make_row_transform(
     input_domain: Domain,
     output_domain: Domain,
-    function: Box<dyn Fn(Data) -> Result<Data, crate::Error>>,
+    function: Box<dyn Fn(Data) -> Result<Data, Error>>,
     hint: Option<Box<dyn Fn(&DataDistance, &DataDistance) -> DataDistance>>,
 ) -> Transformation {
     Transformation {

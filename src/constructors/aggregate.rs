@@ -1,7 +1,12 @@
 // use crate::base::{Domain, VectorDomain, ScalarDomain, Data};
 // use crate::Transformation;
 
-// fn make_sum(input_domain: Domain) -> Result<Transformation, crate::Error> {
+
+use crate::base::domain::{Domain, VectorDomain, ScalarDomain};
+use crate::base::metric::DataDistance;
+use crate::base::Data;
+
+// fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
 //
 //     let output_domain = match &input_domain {
 //         Domain::Vector(VectorDomain {
@@ -12,12 +17,12 @@
 //
 //             let atomic_type: &ScalarDomain = atomic_type.scalar()?;
 //
-//             let lower = Some(match (&atomic_type.nature.numeric()?.lower, length) {
-//                 (Some(lower), Some(length)) => lower * length,
+//             let lower = Some(match (&atomic_type.nature.numeric()?.0, length) {
+//                 (Some(lower), Some(length)) => lower * lower.cast(length),
 //                 _ => None
 //             });
 //
-//             let upper = Some(match (&atomic_type.nature.numeric()?.upper, length) {
+//             let upper = Some(match (&atomic_type.nature.numeric()?.1, length) {
 //                 (Some(upper), Some(length)) => upper * length,
 //                 _ => None
 //             });

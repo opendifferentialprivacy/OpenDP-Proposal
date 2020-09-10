@@ -11,6 +11,7 @@ num = "0.3.0"
 thiserror = "1.0.20"
 derive_more = "0.99.9"
 indexmap = "1.5.1"
+noisy_float = "0.1.13"
 
 [lib]
 name = "opendp_proposal"

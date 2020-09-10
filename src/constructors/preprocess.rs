@@ -1,18 +1,19 @@
-use crate::base::{Domain, Scalar, ScalarDomain, NumericScalar, NumericDomain, Data};
-use crate::Transformation;
-use crate::metric::DataDistance;
 
-pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, crate::Error> {
+use crate::{Transformation, Error};
+use crate::base::domain::{Domain, ScalarDomain, Interval};
+use crate::base::value::{Scalar, NumericScalar};
+use crate::base::metric::DataDistance;
+use crate::base::Data;
 
-    let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, crate::Error> {
+pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
+
+    let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
         let ScalarDomain { may_have_nullity, nature } = atomic_type.scalar()?.clone();
 
         let lower = lower.clone().numeric()?;
         let upper = upper.clone().numeric()?;
 
-        let NumericDomain {
-            lower: prior_lower, upper: prior_upper
-        } = nature.numeric()?;
+        let (prior_lower, prior_upper) = nature.numeric()?.bounds();
 
         let lower = prior_lower.as_ref()
             .map(|prior_lower| lower.max(&prior_lower))
@@ -30,16 +31,6 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
             domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
             Domain::Vector(domain)
         }
-        Domain::Dataframe(mut domain) => {
-            for atomic_domain in domain.columns.values_mut() {
-                clamp_atomic_domain(atomic_domain).map(|r| *atomic_domain = r)?;
-            }
-            Domain::Dataframe(domain)
-        }
-        Domain::Matrix(mut domain) => {
-            domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
-            Domain::Matrix(domain)
-        }
         _ => return Err(crate::Error::Raw("invalid input domain"))
     };
 
@@ -56,21 +47,19 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
 
 pub fn make_impute_numeric(
     input_domain: &Domain, lower: NumericScalar, upper: NumericScalar,
-) -> Result<Transformation, crate::Error> {
+) -> Result<Transformation, Error> {
     if lower > upper {
         return Err(crate::Error::Raw("lower may not be less than upper"))
     }
 
     // function that applies impute transformation to atomic type
-    let impute_atomic_domain = |atomic_type: &Domain| -> Result<Domain, crate::Error> {
+    let impute_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
 
         // atomic type must be a scalar
         let nature = atomic_type.scalar()?.clone().nature;
 
         // retrieve lower and upper bounds for the data domain
-        let NumericDomain {
-            lower: prior_lower, upper: prior_upper
-        } = nature.numeric()?.clone();
+        let (prior_lower, prior_upper) = nature.numeric()?.bounds();
 
         // if lower bound on the input domain exists, then potentially widen it or return none
         let lower = Some(prior_lower
@@ -92,16 +81,6 @@ pub fn make_impute_numeric(
             domain.atomic_type = Box::new(impute_atomic_domain(domain.atomic_type.as_ref())?);
             Domain::Vector(domain)
         }
-        Domain::Dataframe(mut domain) => {
-            domain.columns.values_mut().try_for_each(|atomic_domain|
-                impute_atomic_domain(atomic_domain).map(|r| *atomic_domain = r))?;
-            Domain::Dataframe(domain)
-        }
-        Domain::Matrix(mut domain) => {
-            // apply imputation transformation to the atomic domain
-            domain.atomic_type = Box::new(impute_atomic_domain(domain.atomic_type.as_ref())?);
-            Domain::Matrix(domain)
-        }
         _ => return Err(crate::Error::InvalidDomain)
     };
 
@@ -116,8 +95,10 @@ pub fn make_impute_numeric(
 
 #[cfg(test)]
 pub mod test_impute_numeric {
-    use crate::base::{Domain, NumericScalar, VectorDomain};
+    use crate::base_x::{Domain, NumericScalar, VectorDomain};
     use crate::constructors::preprocess::make_impute_numeric;
+    use crate::base::domain::{Domain, VectorDomain};
+    use crate::base::value::NumericScalar;
 
     #[test]
     fn test_1() {

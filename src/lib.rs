@@ -1,13 +1,13 @@
 // mod examples;
 #![allow(dead_code)]
 
-use crate::base::{Domain, Data};
-use crate::metric::{DataDistance, PrivacyDistance};
+use crate::base::{Data};
+use crate::base::domain::Domain;
+use crate::base::metric::{DataDistance, PrivacyDistance};
 
 pub mod base;
-pub mod metric;
 pub mod constructors;
-pub mod ffi;
+// pub mod ffi;
 
 
 
@@ -21,6 +21,8 @@ pub enum Error {
     DomainMismatch,
     #[error("Atomic Mismatch")]
     AtomicMismatch,
+    #[error("Privacy Mismatch")]
+    PrivacyMismatch,
     #[error("Invalid Domain")]
     InvalidDomain,
     #[error("Insufficient budget")]
