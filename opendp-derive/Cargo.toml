@@ -1,0 +1,17 @@
+[package]
+name = "opendp-derive"
+version = "0.1.0"
+authors = ["Shoeboxam <shoeboxam@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+syn = {version = "1.0.40", features = ["full", "parsing"]}
+quote = "1.0.7"
+heck = "0.3.1"
+proc-macro2 = "1.0.21"
+
+[dev-dependencies]
+num = "0.3.0"
+
+[lib]
+proc-macro = true

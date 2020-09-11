@@ -1,6 +1,16 @@
-/target
-Cargo.lock
-
 *.iml
 .idea/
+
+/opendp-derive/target
+/opendp-derive/Cargo.lock
+
+/opendp/target
+/opendp/Cargo.lock
+
 /app/target
+/app/Cargo.lock
+
+
+# old
+/target
+Cargo.lock

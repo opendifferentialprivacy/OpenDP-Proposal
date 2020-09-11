@@ -26,7 +26,7 @@ class LibraryWrapper(object):
         # lib_dir = os.path.join(script_dir, "lib")
         # lib_opendp_path = os.path.join(lib_dir, "libopendp_proposal" + extension)
 
-        lib_opendp_path = "/Users/michael/OpenDP-Proposal/target/debug/libopendp_proposal.dylib"
+        lib_opendp_path = "/Users/michael/OpenDP-Proposal/opendp/target/debug/libopendp.dylib"
 
         self.lib_opendp = ctypes.cdll.LoadLibrary(lib_opendp_path)
 

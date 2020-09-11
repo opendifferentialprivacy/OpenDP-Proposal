@@ -1,5 +1,5 @@
 [package]
-name = "opendp_proposal"
+name = "opendp"
 version = "0.1.0"
 authors = ["Shoeboxam <shoeboxam@gmail.com>"]
 edition = "2018"
@@ -14,5 +14,5 @@ indexmap = "1.5.1"
 noisy_float = "0.1.13"
 
 [lib]
-name = "opendp_proposal"
+name = "opendp"
 crate-type = ["rlib", "cdylib"]
