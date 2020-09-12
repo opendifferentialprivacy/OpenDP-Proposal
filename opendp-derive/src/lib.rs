@@ -6,7 +6,11 @@ use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use quote::ToTokens;
-use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, Type, TypePath, Variant, PatWild};
+use syn::{
+    Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, Fields, FieldsUnnamed,
+    Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment,
+    PatWild, Type, TypePath, Variant,
+};
 use syn::export::TokenStream2;
 
 /// Derive an apply macro to accompany an enum.
@@ -20,7 +24,7 @@ pub fn apply(input: TokenStream) -> TokenStream {
         panic!("Apply data must be an enum")
     };
 
-    // name for the generated unary map macro
+    // name for the generated macro
     let ident_map = format!("apply_{}", ident_enum.to_string().to_snake_case());
 
     // write unary map macro
@@ -40,7 +44,7 @@ pub fn apply(input: TokenStream) -> TokenStream {
                 guard: None,
                 fat_arrow_token: syn::token::FatArrow::default(),
                 // right-hand side of "=>"
-                body: Box::new(Expr::Verbatim(quote!(__function(arg1, __options).into()).into())),
+                body: Box::new(Expr::Verbatim(quote!(__function(arg1, __options).map(|v| v.into())).into())),
                 comma: Some(syn::token::Comma::default()),
             })
             .collect()
@@ -62,7 +66,7 @@ pub fn apply(input: TokenStream) -> TokenStream {
                 guard: None,
                 fat_arrow_token: syn::token::FatArrow::default(),
                 // right-hand side of "=>"
-                body: Box::new(Expr::Verbatim(quote!(__function(arg1, arg2, __options).into()).into())),
+                body: Box::new(Expr::Verbatim(quote!(__function(arg1, arg2, __options).map(|v| v.into())).into())),
                 comma: Some(syn::token::Comma::default()),
             })
             .chain(vec![Arm {
@@ -71,7 +75,7 @@ pub fn apply(input: TokenStream) -> TokenStream {
                 guard: None,
                 fat_arrow_token: syn::token::FatArrow::default(),
                 // TODO: switch to Error::AtomicMismatch
-                body: Box::new(Expr::Verbatim(quote!(panic!("argument types must match")).into())),
+                body: Box::new(Expr::Verbatim(quote!(Err(Error::AtomicMismatch)).into())),
                 comma: None
             }])
             .collect()
@@ -134,7 +138,7 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
         let ident_variant = &variant.ident;
         let ty_variant = get_ty_singleton(variant);
 
-        TokenStream::from(quote!(impl From<#ty_variant> for NumericScalar {
+        TokenStream::from(quote!(impl From<#ty_variant> for #ident_enum {
             fn from(v: #ty_variant) -> Self {
                 #ident_enum::#ident_variant(v)
             }

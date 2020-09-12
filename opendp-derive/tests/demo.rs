@@ -1,10 +1,11 @@
 use opendp_derive::{Apply, AutoFrom, AutoGet};
-use num::Zero;
+use num::{Zero, CheckedAdd};
 use std::ops::Add;
 
 #[derive(Debug)]
 enum Error {
-    AtomicMismatch
+    AtomicMismatch,
+    Overflow
 }
 #[derive(Clone, Debug, Apply, AutoFrom, AutoGet)]
 enum NumericScalar {
@@ -12,35 +13,49 @@ enum NumericScalar {
     I64(i64),
 }
 
+#[derive(Clone, Debug, Apply, AutoFrom, AutoGet)]
+enum IntScalar {
+    I64(i64),
+    I32(i32),
+    I16(i16),
+    I8(i8),
+}
+
 // this is no longer generic after applying auxiliary parameters
 // fn make_clamp_fn<T: PartialOrd + Clone>(l: T, u: T) -> impl Fn(T) -> T {
 //     move |v: T| if v < l {l.clone()} else if v > u {u.clone()} else {v}
 // }
 
-fn sign<T: PartialOrd + Clone + Zero>(v: T, aux: f64) -> i64 {
+fn sign<T: PartialOrd + Clone + Zero>(v: T, aux: f64) -> Result<i64, Error> {
     println!("{}", aux);
-    if v >= T::zero() {1} else {0}
+    Ok(if v >= T::zero() {1} else {0})
 }
 
-fn add<T: Add<Output=T>>(l: T, r: T) -> T {
-    l + r
+fn add<T: Add<Output=T>>(l: T, r: T) -> Result<T, Error> {
+    Ok(l + r)
 }
+
+fn checked_add<T: CheckedAdd<Output=T>>(l: T, r: T) -> Result<T, Error> {
+    l.checked_add(&r).ok_or_else(|| Error::Overflow)
+}
+
 
 #[test]
 fn test_basic() {
-    let value = NumericScalar::from(2.);
-    println!("{:?}", value);
-    println!("{}", value.clone().f64().unwrap());
+    let value: NumericScalar = 2.0.into();
+    println!("Wrapped value: {:?}", value);
+    println!("Unwrapped value: {}", value.clone().f64().unwrap());
 
-    // let function = make_clamp_fn(0.0f64, 1.0f64);
-    // let clamped_value: ExampleEnum = map_example_enum_unary!(value, function);
+    let sign_value: Result<NumericScalar, Error> = apply_numeric_scalar!(sign, value; 2.);
+    let sign: i64 = sign_value.unwrap().i64().unwrap();
+    println!("sign: {:?}", sign);
 
-    let sign_value: NumericScalar = apply_numeric_scalar!(sign, value; 2.);
+    let sum_value: Result<NumericScalar, Error> = apply_numeric_scalar!(add, 1.0.into(), 2.0.into());
+    let sum: f64 = sum_value.unwrap().f64().unwrap();
+    println!("sum: {:?}", sum);
 
-    let sum: NumericScalar = apply_numeric_scalar!(add, 1.0.into(), 2.0.into());
-
-    println!("{:?}", sum);
-
-
-    // println!("{:?}", sign_value);
+    let a: IntScalar = 1.into();
+    let b: IntScalar = 2.into();
+    let checked_sum: Result<IntScalar, Error> = apply_int_scalar!(checked_add, a, b);
+    println!("checked sum: {:?}", checked_sum);
 }
