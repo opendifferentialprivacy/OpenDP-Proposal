@@ -1,16 +1,15 @@
 extern crate proc_macro;
 
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 
-use quote::{ToTokens};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Expr, Variant, Arm, ExprMatch, ExprPath, Path, PathSegment, Pat, PatIdent, ExprCall, PatTupleStruct, PatTuple, Fields, FieldsUnnamed, Field, Type, TypePath, ExprMethodCall, ItemImpl, Generics, ImplItem};
-use syn::punctuated::Punctuated;
 use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
-use std::iter::FromIterator;
 use quote::quote;
+use quote::ToTokens;
+use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, Type, TypePath, Variant, PatWild};
 use syn::export::TokenStream2;
 
+///
 #[proc_macro_derive(Apply)]
 pub fn apply(input: TokenStream) -> TokenStream {
 
@@ -21,94 +20,110 @@ pub fn apply(input: TokenStream) -> TokenStream {
     };
 
     // name for the generated unary map macro
-    let ident_map_unary = format!("apply_{}", ident_enum.to_string().to_snake_case());
-    // let ident_map_unary = Ident::new(
-    //     format!("map_{}_unary", ident_enum.to_string().to_snake_case()).as_str(),
-    //     ident_enum.span());
-
-    let make_ident_expr = |v: &str| Expr::Path(ExprPath {
-        attrs: vec![], qself: None,
-        path: Path::from(PathSegment::from(Ident::new(v, Span::call_site())))
-    });
+    let ident_map = format!("apply_{}", ident_enum.to_string().to_snake_case());
 
     // write unary map macro
-    let matcher = Expr::Match(ExprMatch {
+    let matcher_unary = Expr::Match(ExprMatch {
         attrs: vec![],
         match_token: syn::token::Match::default(),
         // reference the macro variable $value in a placeholder ident
-        expr: Box::new(make_ident_expr("__value")),
+        expr: Box::new(Expr::Verbatim(quote!(__arg1).into())),
         brace_token: syn::token::Brace::default(),
         // generate each match arm from the variants of the enum
-        arms: variants.iter().map(|variant| {
-            let Variant { ident: ident_variant, .. } = variant;
-            Arm {
+        arms: variants.iter()
+            .map(|variant| &variant.ident)
+            .map(|ident_variant| Arm {
                 attrs: vec![],
                 // left-hand side of "=>"
-                pat: Pat::TupleStruct(PatTupleStruct {
-                    attrs: vec![],
-                    // full path to enum variant
-                    path: Path {
-                        leading_colon: None,
-                        segments: Punctuated::from_iter(vec![ident_enum.clone(), ident_variant.clone()]
-                            .into_iter().map(PathSegment::from))
-                    },
-                    // declare "v", a temporary variable with the value in the enum variant
-                    pat: PatTuple {
-                        attrs: vec![],
-                        paren_token: syn::token::Paren {span: Span::call_site()},
-                        elems: Punctuated::from_iter(vec![Pat::Ident(PatIdent {
-                            attrs: vec![],
-                            by_ref: None,
-                            mutability: None,
-                            ident: Ident::new("v", Span::call_site()),
-                            subpat: None
-                        })].into_iter())
-                    }
-                }),
+                pat: Pat::Verbatim(quote!(#ident_enum::#ident_variant(arg1)).into()),
                 guard: None,
                 fat_arrow_token: syn::token::FatArrow::default(),
-
-                // right-hand side of "=>": two nested function calls
-                // 2. invoke automated "From" conversion
-                body: Box::new(Expr::MethodCall(ExprMethodCall {
-                    attrs: vec![],
-                    // 1. call the generic function
-                    receiver: Box::new(Expr::Call(ExprCall {
-                        attrs: vec![],
-                        // reference the macro variable $function in a placeholder ident
-                        func: Box::new(make_ident_expr("__function")),
-                        paren_token: syn::token::Paren::default(),
-                        args: Punctuated::from_iter(vec![make_ident_expr("v"), make_ident_expr("__auxiliary")])
-                    })),
-                    dot_token: syn::token::Dot::default(),
-                    method: Ident::new("into", Span::call_site()),
-                    turbofish: None,
-                    paren_token: syn::token::Paren::default(),
-                    args: Punctuated::new()
-                })),
+                // right-hand side of "=>"
+                body: Box::new(Expr::Verbatim(quote!(__function(arg1, __options).into()).into())),
                 comma: Some(syn::token::Comma::default()),
-            }
-        }).collect()
+            })
+            .collect()
     });
+
+    let matcher_binary = Expr::Match(ExprMatch {
+        attrs: vec![],
+        match_token: syn::token::Match::default(),
+        // reference the macro variable $value in a placeholder ident
+        expr: Box::new(Expr::Verbatim(quote!((__arg1, __arg2)).into())),
+        brace_token: syn::token::Brace::default(),
+        // generate each match arm from the variants of the enum
+        arms: variants.iter()
+            .map(|variant| &variant.ident)
+            .map(|ident_variant| Arm {
+                attrs: vec![],
+                // left-hand side of "=>"
+                pat: Pat::Verbatim(quote!((#ident_enum::#ident_variant(arg1), #ident_enum::#ident_variant(arg2))).into()),
+                guard: None,
+                fat_arrow_token: syn::token::FatArrow::default(),
+                // right-hand side of "=>"
+                body: Box::new(Expr::Verbatim(quote!(__function(arg1, arg2, __options).into()).into())),
+                comma: Some(syn::token::Comma::default()),
+            })
+            .chain(vec![Arm {
+                attrs: vec![],
+                pat: Pat::Wild(PatWild { attrs: vec![], underscore_token: syn::token::Underscore::default()}),
+                guard: None,
+                fat_arrow_token: syn::token::FatArrow::default(),
+                // TODO: switch to Error::AtomicMismatch
+                body: Box::new(Expr::Verbatim(quote!(panic!("argument types must match")).into())),
+                comma: None
+            }])
+            .collect()
+    });
+
+    let sub_macro_var = |text: String| text
+        .replace("__function", "$function")
+        .replace("__arg1", "$arg1")
+        .replace("__arg2", "$arg2")
+        .replace("__options", "$( $option ),*");
 
     // syn cannot seem to express declarative macros in its AST,
     //    but we can still construct a token stream directly
-    let macro_string = format!("
-    macro_rules! {} {{
-        ($function:ident, $value:ident; $( $aux:expr ),* ) => {{
-            {}
-        }}
+    let macro_string = format!(r#"
+    macro_rules! {ident_map} {{
+        ($function:ident, $arg1:expr) => {{
+            {ident_map}!($function, $arg1;)
+        }};
+        ($function:ident, $arg1:expr; $( $option:expr ),* ) => {{
+            {unary_match}
+        }};
+        ($function:ident, $arg1:expr, $arg2:expr) => {{
+            {ident_map}!($function, $arg1, $arg2;)
+        }};
+        ($function:ident, $arg1:expr, $arg2:expr; $( $option:expr ),* ) => {{
+            {binary_match}
+        }};
     }}
-    ", ident_map_unary, matcher.to_token_stream().to_string().replace("__auxiliary", "$( $aux ),*"))
-        .replace("__value", "$value")
-        .replace("__function", "$function");
+    "#,
+        ident_map=ident_map,
+        unary_match=sub_macro_var(matcher_unary.to_token_stream().to_string()),
+        binary_match=sub_macro_var(matcher_binary.to_token_stream().to_string())
+    );
+
+    println!("{}", macro_string);
 
     macro_string.parse().unwrap()
 }
 
+/// retrieve the only type contained in a length-one tuple variant
+fn get_ty_singleton(variant: &Variant) -> &Type {
+    if let Fields::Unnamed(FieldsUnnamed { unnamed: ref fields, .. }) = variant.fields {
+        if fields.len() != 1 {
+            panic!("Variants must be tuples of length one")
+        }
+        &fields.first().unwrap().ty
+    } else {
+        panic!("Variants must be tuples")
+    }
+}
+
 #[proc_macro_derive(AutoFrom)]
 pub fn auto_from(input: TokenStream) -> TokenStream {
-
     let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
     let DataEnum { variants, .. } = if let Data::Enum(d) = data { d } else {
         panic!("Apply data must be an enum")
@@ -116,18 +131,8 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
 
     let mut output = TokenStream::new();
     output.extend(variants.iter().map(|variant| {
-        let Variant { ident: ident_variant, fields, .. } = variant;
-        let field = if let Fields::Unnamed(FieldsUnnamed { unnamed: fields, .. }) = fields {
-            if fields.len() != 1 {
-                panic!("Variants must be tuples of length one")
-            }
-            fields.first().unwrap().clone()
-        } else {
-            panic!("Variants must be tuples")
-        };
-
-        // Type::Path(TypePath { path: Path { segments, .. }, .. })
-        let Field { ty: ty_variant, .. } = field;
+        let ident_variant = &variant.ident;
+        let ty_variant = get_ty_singleton(variant);
 
         TokenStream::from(quote!(impl From<#ty_variant> for NumericScalar {
             fn from(v: #ty_variant) -> Self {
@@ -161,22 +166,12 @@ pub fn auto_get(input: TokenStream) -> TokenStream {
         })),
         brace_token: syn::token::Brace::default(),
         items: variants.iter().map(|variant| {
-            let Variant { ident: ident_variant, fields, .. } = variant;
-            let field = if let Fields::Unnamed(FieldsUnnamed { unnamed: fields, .. }) = fields {
-                if fields.len() != 1 {
-                    panic!("Variants must be tuples of length one")
-                }
-                fields.first().unwrap().clone()
-            } else {
-                panic!("Variants must be tuples")
-            };
+            let ident_variant = &variant.ident;
+            let ty_variant = get_ty_singleton(variant);
+            let ident_getter = Ident::new(
+                &ident_variant.to_string().to_lowercase(), Span::call_site());
 
-            // Type::Path(TypePath { path: Path { segments, .. }, .. })
-            let Field { ty: ty_variant, .. } = field;
-            let ident_getter = Ident::new(&ident_variant.to_string().to_lowercase(), Span::call_site());
-
-
-            ImplItem::Verbatim(TokenStream2::from(quote!{
+            ImplItem::Verbatim(TokenStream2::from(quote! {
                 fn #ident_getter(self) -> Result<#ty_variant, Error> {
                     if let #ident_enum::#ident_variant(v) = self {
                         Ok(v)
@@ -188,4 +183,3 @@ pub fn auto_get(input: TokenStream) -> TokenStream {
 
     TokenStream::from(implementation.to_token_stream())
 }
-

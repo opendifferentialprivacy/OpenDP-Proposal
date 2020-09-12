@@ -1,5 +1,6 @@
 use opendp_derive::{Apply, AutoFrom, AutoGet};
 use num::Zero;
+use std::ops::Add;
 
 #[derive(Debug)]
 enum Error {
@@ -21,16 +22,25 @@ fn sign<T: PartialOrd + Clone + Zero>(v: T, aux: f64) -> i64 {
     if v >= T::zero() {1} else {0}
 }
 
+fn add<T: Add<Output=T>>(l: T, r: T) -> T {
+    l + r
+}
+
 #[test]
 fn test_basic() {
     let value = NumericScalar::from(2.);
     println!("{:?}", value);
     println!("{}", value.clone().f64().unwrap());
-    
+
     // let function = make_clamp_fn(0.0f64, 1.0f64);
     // let clamped_value: ExampleEnum = map_example_enum_unary!(value, function);
 
     let sign_value: NumericScalar = apply_numeric_scalar!(sign, value; 2.);
+
+    let sum: NumericScalar = apply_numeric_scalar!(add, 1.0.into(), 2.0.into());
+
+    println!("{:?}", sum);
+
 
     // println!("{:?}", sign_value);
 }
