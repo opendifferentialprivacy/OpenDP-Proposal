@@ -3,23 +3,24 @@ extern crate proc_macro;
 use proc_macro::{TokenStream};
 
 use quote::{ToTokens};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Expr, Variant, Arm, ExprMatch, ExprPath, Path, PathSegment, Pat, PatIdent, ExprCall, PatTupleStruct, PatTuple};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Expr, Variant, Arm, ExprMatch, ExprPath, Path, PathSegment, Pat, PatIdent, ExprCall, PatTupleStruct, PatTuple, Fields, FieldsUnnamed, Field, Type, TypePath, ExprMethodCall};
 use syn::punctuated::Punctuated;
 use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use std::iter::FromIterator;
+use quote::quote;
 
-#[proc_macro_derive(Mappable)]
-pub fn map_variant(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Apply)]
+pub fn apply(input: TokenStream) -> TokenStream {
 
     let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
 
     let DataEnum { variants, .. } = if let Data::Enum(d) = data { d } else {
-        panic!("Mappable data must be an enum")
+        panic!("Apply data must be an enum")
     };
 
     // name for the generated unary map macro
-    let ident_map_unary = format!("map_{}_unary", ident_enum.to_string().to_snake_case());
+    let ident_map_unary = format!("apply_{}", ident_enum.to_string().to_snake_case());
     // let ident_map_unary = Ident::new(
     //     format!("map_{}_unary", ident_enum.to_string().to_snake_case()).as_str(),
     //     ident_enum.span());
@@ -37,7 +38,7 @@ pub fn map_variant(input: TokenStream) -> TokenStream {
         expr: Box::new(make_ident_expr("__value")),
         brace_token: syn::token::Brace::default(),
         // generate each match arm from the variants of the enum
-        arms: variants.into_iter().map(|variant| {
+        arms: variants.iter().map(|variant| {
             let Variant { ident: ident_variant, .. } = variant;
             Arm {
                 attrs: vec![],
@@ -47,7 +48,7 @@ pub fn map_variant(input: TokenStream) -> TokenStream {
                     // full path to enum variant
                     path: Path {
                         leading_colon: None,
-                        segments: Punctuated::from_iter(vec![ident_enum.clone(), ident_variant]
+                        segments: Punctuated::from_iter(vec![ident_enum.clone(), ident_variant.clone()]
                             .into_iter().map(PathSegment::from))
                     },
                     // declare "v", a temporary variable with the value in the enum variant
@@ -67,28 +68,22 @@ pub fn map_variant(input: TokenStream) -> TokenStream {
                 fat_arrow_token: syn::token::FatArrow::default(),
 
                 // right-hand side of "=>": two nested function calls
-                // 1. the conversion back to ExampleEnum
-                body: Box::new(Expr::Call(ExprCall {
+                // 2. invoke automated "From" conversion
+                body: Box::new(Expr::MethodCall(ExprMethodCall {
                     attrs: vec![],
-                    func: Box::new(Expr::Path(ExprPath {
-                        attrs: vec![],
-                        qself: None,
-                        path: Path {
-                            leading_colon: None,
-                            segments: Punctuated::from_iter(vec![
-                                ident_enum.clone(), Ident::new("from", Span::call_site())
-                            ].into_iter().map(PathSegment::from))
-                        }
-                    })),
-                    paren_token: syn::token::Paren::default(),
-                    // 2. and the generic function invocation
-                    args: Punctuated::from_iter(vec![Expr::Call(ExprCall {
+                    // 1. call the generic function
+                    receiver: Box::new(Expr::Call(ExprCall {
                         attrs: vec![],
                         // reference the macro variable $function in a placeholder ident
                         func: Box::new(make_ident_expr("__function")),
                         paren_token: syn::token::Paren::default(),
-                        args: Punctuated::from_iter(vec![make_ident_expr("v")])
-                    })])
+                        args: Punctuated::from_iter(vec![make_ident_expr("v"), make_ident_expr("__auxiliary")])
+                    })),
+                    dot_token: syn::token::Dot::default(),
+                    method: Ident::new("into", Span::call_site()),
+                    turbofish: None,
+                    paren_token: syn::token::Paren::default(),
+                    args: Punctuated::new()
                 })),
                 comma: Some(syn::token::Comma::default()),
             }
@@ -99,13 +94,46 @@ pub fn map_variant(input: TokenStream) -> TokenStream {
     //    but we can still construct a token stream directly
     let macro_string = format!("
     macro_rules! {} {{
-        ($value:ident, $function:ident) => {{
+        ($function:ident, $value:ident; $( $aux:expr ),* ) => {{
             {}
         }}
     }}
-    ", ident_map_unary, matcher.to_token_stream().to_string())
+    ", ident_map_unary, matcher.to_token_stream().to_string().replace("__auxiliary", "$( $aux ),*"))
         .replace("__value", "$value")
         .replace("__function", "$function");
 
     macro_string.parse().unwrap()
+}
+
+#[proc_macro_derive(AutoFrom)]
+pub fn auto_from(input: TokenStream) -> TokenStream {
+
+    let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
+    let DataEnum { variants, .. } = if let Data::Enum(d) = data { d } else {
+        panic!("Apply data must be an enum")
+    };
+
+    let mut output = TokenStream::new();
+    output.extend(variants.iter().map(|variant| {
+        let Variant { ident: ident_variant, fields, .. } = variant;
+        let field = if let Fields::Unnamed(FieldsUnnamed { unnamed: fields, .. }) = fields {
+            if fields.len() != 1 {
+                panic!("Variants must be tuples of length one")
+            }
+            fields.first().unwrap().clone()
+        } else {
+            panic!("Variants must be tuples")
+        };
+
+        // Type::Path(TypePath { path: Path { segments, .. }, .. })
+        let Field { ty: ty_variant, .. } = field;
+
+        TokenStream::from(quote!(impl From<#ty_variant> for NumericScalar {
+            fn from(v: #ty_variant) -> Self {
+                #ident_enum::#ident_variant(v)
+            }
+        }))
+    }));
+
+    output
 }
