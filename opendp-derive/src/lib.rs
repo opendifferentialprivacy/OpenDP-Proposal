@@ -9,7 +9,8 @@ use quote::ToTokens;
 use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, Type, TypePath, Variant, PatWild};
 use syn::export::TokenStream2;
 
-///
+/// Derive an apply macro to accompany an enum.
+/// The macro may be used to apply a generic function over all enum variants.
 #[proc_macro_derive(Apply)]
 pub fn apply(input: TokenStream) -> TokenStream {
 
@@ -105,8 +106,6 @@ pub fn apply(input: TokenStream) -> TokenStream {
         binary_match=sub_macro_var(matcher_binary.to_token_stream().to_string())
     );
 
-    println!("{}", macro_string);
-
     macro_string.parse().unwrap()
 }
 
@@ -122,6 +121,7 @@ fn get_ty_singleton(variant: &Variant) -> &Type {
     }
 }
 
+// derive From implementations for the annotated enum
 #[proc_macro_derive(AutoFrom)]
 pub fn auto_from(input: TokenStream) -> TokenStream {
     let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
@@ -144,7 +144,17 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
     output
 }
 
-
+/// derive getters for the annotated enum
+///
+/// # Example
+/// ```
+/// #[derive(AutoGet)]
+/// enum MyEnum {A(bool)}
+/// fn main() {
+///     let test_instance = MyEnum::A(true);
+///     assert!(test_instance.a().unwrap())
+/// }
+/// ```
 #[proc_macro_derive(AutoGet)]
 pub fn auto_get(input: TokenStream) -> TokenStream {
 
