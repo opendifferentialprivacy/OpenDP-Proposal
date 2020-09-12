@@ -3,12 +3,13 @@ extern crate proc_macro;
 use proc_macro::{TokenStream};
 
 use quote::{ToTokens};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Expr, Variant, Arm, ExprMatch, ExprPath, Path, PathSegment, Pat, PatIdent, ExprCall, PatTupleStruct, PatTuple, Fields, FieldsUnnamed, Field, Type, TypePath, ExprMethodCall};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Expr, Variant, Arm, ExprMatch, ExprPath, Path, PathSegment, Pat, PatIdent, ExprCall, PatTupleStruct, PatTuple, Fields, FieldsUnnamed, Field, Type, TypePath, ExprMethodCall, ItemImpl, Generics, ImplItem};
 use syn::punctuated::Punctuated;
 use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use std::iter::FromIterator;
 use quote::quote;
+use syn::export::TokenStream2;
 
 #[proc_macro_derive(Apply)]
 pub fn apply(input: TokenStream) -> TokenStream {
@@ -137,3 +138,54 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
 
     output
 }
+
+
+#[proc_macro_derive(AutoGet)]
+pub fn auto_get(input: TokenStream) -> TokenStream {
+
+    let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
+    let DataEnum { variants, .. } = if let Data::Enum(d) = data { d } else {
+        panic!("Apply data must be an enum")
+    };
+
+    let implementation = syn::Item::Impl(ItemImpl {
+        attrs: vec![],
+        defaultness: None,
+        unsafety: None,
+        impl_token: syn::token::Impl::default(),
+        generics: Generics::default(),
+        trait_: None,
+        self_ty: Box::new(Type::Path(TypePath {
+            qself: None,
+            path: Path::from(PathSegment::from(ident_enum.clone()))
+        })),
+        brace_token: syn::token::Brace::default(),
+        items: variants.iter().map(|variant| {
+            let Variant { ident: ident_variant, fields, .. } = variant;
+            let field = if let Fields::Unnamed(FieldsUnnamed { unnamed: fields, .. }) = fields {
+                if fields.len() != 1 {
+                    panic!("Variants must be tuples of length one")
+                }
+                fields.first().unwrap().clone()
+            } else {
+                panic!("Variants must be tuples")
+            };
+
+            // Type::Path(TypePath { path: Path { segments, .. }, .. })
+            let Field { ty: ty_variant, .. } = field;
+            let ident_getter = Ident::new(&ident_variant.to_string().to_lowercase(), Span::call_site());
+
+
+            ImplItem::Verbatim(TokenStream2::from(quote!{
+                fn #ident_getter(self) -> Result<#ty_variant, Error> {
+                    if let #ident_enum::#ident_variant(v) = self {
+                        Ok(v)
+                    } else { Err(Error::AtomicMismatch) }
+                }
+            }))
+        }).collect()
+    });
+
+    TokenStream::from(implementation.to_token_stream())
+}
+

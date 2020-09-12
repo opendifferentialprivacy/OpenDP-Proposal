@@ -1,7 +1,11 @@
-use opendp_derive::{Apply, AutoFrom};
+use opendp_derive::{Apply, AutoFrom, AutoGet};
 use num::Zero;
 
-#[derive(Debug, Apply, AutoFrom)]
+#[derive(Debug)]
+enum Error {
+    AtomicMismatch
+}
+#[derive(Clone, Debug, Apply, AutoFrom, AutoGet)]
 enum NumericScalar {
     F64(f64),
     I64(i64),
@@ -20,6 +24,9 @@ fn sign<T: PartialOrd + Clone + Zero>(v: T, aux: f64) -> i64 {
 #[test]
 fn test_basic() {
     let value = NumericScalar::from(2.);
+    println!("{:?}", value);
+    println!("{}", value.clone().f64().unwrap());
+    
     // let function = make_clamp_fn(0.0f64, 1.0f64);
     // let clamped_value: ExampleEnum = map_example_enum_unary!(value, function);
 
