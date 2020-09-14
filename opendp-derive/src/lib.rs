@@ -6,17 +6,14 @@ use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use quote::ToTokens;
-use syn::{
-    Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, Fields, FieldsUnnamed,
-    Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment,
-    PatWild, Type, TypePath, Variant,
-};
+use syn::{Data, DataEnum, DeriveInput, Expr, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Path, PathSegment, Type, TypePath, Variant};
 use syn::export::TokenStream2;
 
 /// Derive an apply macro to accompany an enum.
 /// The macro may be used to apply a generic function over all enum variants.
-#[proc_macro_derive(Apply)]
+#[proc_macro_derive(Apply, attributes(reapply))]
 pub fn apply(input: TokenStream) -> TokenStream {
+    const REAPPLY_ATTR_NAME: &'static str = "reapply";
 
     let DeriveInput { ident: ident_enum, data, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -28,58 +25,66 @@ pub fn apply(input: TokenStream) -> TokenStream {
     let ident_map = format!("apply_{}", ident_enum.to_string().to_snake_case());
 
     // write unary map macro
-    let matcher_unary = Expr::Match(ExprMatch {
-        attrs: vec![],
-        match_token: syn::token::Match::default(),
-        // reference the macro variable $value in a placeholder ident
-        expr: Box::new(Expr::Verbatim(quote!(__arg1).into())),
-        brace_token: syn::token::Brace::default(),
-        // generate each match arm from the variants of the enum
-        arms: variants.iter()
-            .map(|variant| &variant.ident)
-            .map(|ident_variant| Arm {
-                attrs: vec![],
-                // left-hand side of "=>"
-                pat: Pat::Verbatim(quote!(#ident_enum::#ident_variant(arg1)).into()),
-                guard: None,
-                fat_arrow_token: syn::token::FatArrow::default(),
-                // right-hand side of "=>"
-                body: Box::new(Expr::Verbatim(quote!(__function(arg1, __options).map(|v| v.into())).into())),
-                comma: Some(syn::token::Comma::default()),
-            })
-            .collect()
-    });
+    let unary_arms = variants.iter()
+        .map(|variant| {
+            let Variant { ident: ident_variant, attrs, .. } = variant;
+            // if reapply attribute is set
+            let body = if attrs.iter()
+                .any(|attr| attr.path.is_ident(REAPPLY_ATTR_NAME)) {
 
-    let matcher_binary = Expr::Match(ExprMatch {
-        attrs: vec![],
-        match_token: syn::token::Match::default(),
-        // reference the macro variable $value in a placeholder ident
-        expr: Box::new(Expr::Verbatim(quote!((__arg1, __arg2)).into())),
-        brace_token: syn::token::Brace::default(),
-        // generate each match arm from the variants of the enum
-        arms: variants.iter()
-            .map(|variant| &variant.ident)
-            .map(|ident_variant| Arm {
-                attrs: vec![],
-                // left-hand side of "=>"
-                pat: Pat::Verbatim(quote!((#ident_enum::#ident_variant(arg1), #ident_enum::#ident_variant(arg2))).into()),
-                guard: None,
-                fat_arrow_token: syn::token::FatArrow::default(),
-                // right-hand side of "=>"
-                body: Box::new(Expr::Verbatim(quote!(__function(arg1, arg2, __options).map(|v| v.into())).into())),
-                comma: Some(syn::token::Comma::default()),
-            })
-            .chain(vec![Arm {
-                attrs: vec![],
-                pat: Pat::Wild(PatWild { attrs: vec![], underscore_token: syn::token::Underscore::default()}),
-                guard: None,
-                fat_arrow_token: syn::token::FatArrow::default(),
-                // TODO: switch to Error::AtomicMismatch
-                body: Box::new(Expr::Verbatim(quote!(Err(Error::AtomicMismatch)).into())),
-                comma: None
-            }])
-            .collect()
-    });
+                // retrieve the ident of the type contained within this variant
+                let ident_field_ty = if let Type::Path(ty_path) = get_ty_singleton(variant) {
+                    &ty_path.path.segments.last().unwrap().ident
+                } else {
+                    panic!("Invalid type on enum field")
+                };
+
+                let ident_apply = Ident::new(
+                    &format!("apply_{}", ident_field_ty.to_string().to_snake_case()),
+                    Span::call_site());
+
+                Expr::Verbatim(quote!(#ident_apply!(__function, arg1; __options)).into())
+            } else {
+                Expr::Verbatim(quote!(__function(arg1, __options).map(|v| v.into())).into())
+            };
+            quote!(#ident_enum::#ident_variant(arg1) => #body)
+        })
+        .collect::<Vec<_>>();
+
+    let matcher_unary = Expr::Verbatim(quote!(match __arg1 {
+        #(#unary_arms,)*
+    }).into());
+
+    let binary_arms = variants.iter()
+        .map(|variant| {
+            let Variant { ident: ident_variant, attrs, .. } = variant;
+            // if reapply attribute is set
+            let body = if attrs.iter()
+                .any(|attr| attr.path.is_ident(REAPPLY_ATTR_NAME)) {
+
+                // retrieve the ident of the type contained within this variant
+                let ident_field_ty = if let Type::Path(ty_path) = get_ty_singleton(variant) {
+                    &ty_path.path.segments.last().unwrap().ident
+                } else {
+                    panic!("Invalid type on enum field")
+                };
+
+                let ident_apply = Ident::new(
+                    &format!("apply_{}", ident_field_ty.to_string().to_snake_case()),
+                    Span::call_site());
+
+                Expr::Verbatim(quote!(#ident_apply!(__function, arg1, arg2; __options)).into())
+            } else {
+                Expr::Verbatim(quote!(__function(arg1, arg2, __options).map(|v| v.into())).into())
+            };
+            quote!((#ident_enum::#ident_variant(arg1), #ident_enum::#ident_variant(arg2)) => #body)
+        })
+        .collect::<Vec<_>>();
+
+    let matcher_binary = Expr::Verbatim(quote!(match (__arg1, __arg2) {
+        #(#binary_arms,)*
+        _ => Err(Error::AtomicMismatch)
+    }).into());
 
     let sub_macro_var = |text: String| text
         .replace("__function", "$function")

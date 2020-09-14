@@ -21,6 +21,14 @@ enum IntScalar {
     I8(i8),
 }
 
+#[derive(Clone, Debug, Apply, AutoFrom, AutoGet)]
+enum Scalar {
+    #[reapply]
+    Int(IntScalar),
+    Bool(bool),
+    String(String)
+}
+
 // this is no longer generic after applying auxiliary parameters
 // fn make_clamp_fn<T: PartialOrd + Clone>(l: T, u: T) -> impl Fn(T) -> T {
 //     move |v: T| if v < l {l.clone()} else if v > u {u.clone()} else {v}
@@ -37,6 +45,10 @@ fn add<T: Add<Output=T>>(l: T, r: T) -> Result<T, Error> {
 
 fn checked_add<T: CheckedAdd<Output=T>>(l: T, r: T) -> Result<T, Error> {
     l.checked_add(&r).ok_or_else(|| Error::Overflow)
+}
+
+fn to_string<T: ToString>(x: T) -> Result<String, Error> {
+    Ok(x.to_string())
 }
 
 
@@ -58,4 +70,8 @@ fn test_basic() {
     let b: IntScalar = 2.into();
     let checked_sum: Result<IntScalar, Error> = apply_int_scalar!(checked_add, a, b);
     println!("checked sum: {:?}", checked_sum);
+
+    let a: Scalar = IntScalar::from(1).into();
+    let str_casted: String = apply_scalar!(to_string, a).unwrap();
+    println!("casted: {}", str_casted);
 }
