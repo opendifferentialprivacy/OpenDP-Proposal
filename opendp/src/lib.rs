@@ -5,6 +5,7 @@ use crate::base::{Data};
 use crate::base::domain::Domain;
 use crate::base::metric::{DataDistance, PrivacyDistance};
 
+#[macro_use]
 pub mod base;
 pub mod constructors;
 // pub mod ffi;
@@ -25,6 +26,8 @@ pub enum Error {
     PrivacyMismatch,
     #[error("Invalid Domain")]
     InvalidDomain,
+    #[error("Overflow")]
+    Overflow,
     #[error("Insufficient budget")]
     InsufficientBudget,
     #[error("Potential Nullity")]
@@ -97,7 +100,7 @@ pub fn make_adaptive_composition(
                     if privacy_budget < &privacy_loss {
                         (Err(Error::InsufficientBudget), (data.clone(), privacy_budget.clone()))
                     } else {
-                        match privacy_budget - &privacy_loss {
+                        match privacy_budget.clone() - privacy_loss {
                             Ok(new_budget) => ((query.function)(data.clone()), (data.clone(), new_budget)),
                             Err(e) => (Err(e), (data.clone(), privacy_budget.clone()))
                         }

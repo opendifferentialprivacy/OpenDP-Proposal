@@ -1,8 +1,9 @@
 use std::fmt::Debug;
-use std::ops::{Mul, Sub};
+use std::ops::{Mul, Sub, Add};
 
 use crate::Error;
-use crate::base::value::{NumericScalar, UnsignedIntScalar};
+use crate::base::value::*;
+use crate::base::functions::{mul, add, sub};
 
 trait MathMetric {
     fn is_single_real(&self) -> bool;
@@ -49,8 +50,8 @@ pub struct ZConcentratedDP;
 
 #[derive(Clone, PartialOrd, PartialEq)]
 pub enum DataDistance {
-    Symmetric(UnsignedIntScalar),
-    Hamming(UnsignedIntScalar),
+    Symmetric(NumericScalar),
+    Hamming(NumericScalar),
     L1Sensitivity(NumericScalar),
     L2Sensitivity(NumericScalar),
 }
@@ -61,30 +62,23 @@ pub enum PrivacyDistance {
     ZConcentrated(NumericScalar)
 }
 
-impl Mul<NumericScalar> for DataDistance {
-    type Output = Result<DataDistance, Error>;
+macro_rules! impl_trait_privacy_distance {
+    ($trait_name:ident, $trait_fun:ident, $generic_fun:ident) => {
+        impl $trait_name<PrivacyDistance> for PrivacyDistance {
+            type Output = Result<PrivacyDistance, Error>;
 
-    fn mul(self, rhs: NumericScalar) -> Self::Output {
-        Ok(match self {
-            DataDistance::Hamming(d) => DataDistance::Hamming((d * rhs)?),
-            DataDistance::Symmetric(d) => DataDistance::Symmetric((d * rhs)?),
-            DataDistance::L1Sensitivity(d) => DataDistance::L1Sensitivity((d * rhs)?),
-            DataDistance::L2Sensitivity(d) => DataDistance::L2Sensitivity((d * rhs)?),
-            _ => unimplemented!()
-        })
+            fn $trait_fun(self, rhs: PrivacyDistance) -> Self::Output {
+                Ok(match (self, rhs) {
+                    (PrivacyDistance::Approximate(eps_l, del_l), PrivacyDistance::Approximate(eps_r, del_r)) =>
+                        PrivacyDistance::Approximate(apply_numeric_scalar!($generic_fun, eps_l, eps_r)?, apply_numeric_scalar!($generic_fun, del_l, del_r)?),
+                    (PrivacyDistance::ZConcentrated(rho_l), PrivacyDistance::ZConcentrated(rho_r)) =>
+                        PrivacyDistance::ZConcentrated(apply_numeric_scalar!($generic_fun, rho_l, rho_r)?),
+                    _ => return Err(Error::PrivacyMismatch)
+                })
+            }
+        }
     }
 }
-
-impl Sub<&PrivacyDistance> for &PrivacyDistance {
-    type Output = Result<PrivacyDistance, Error>;
-
-    fn sub(self, rhs: &PrivacyDistance) -> Self::Output {
-        Ok(match (self, rhs) {
-            (PrivacyDistance::Approximate(eps_l, del_l), PrivacyDistance::Approximate(eps_r, del_r)) =>
-                PrivacyDistance::Approximate((eps_l + eps_r)?, (del_l + del_r)?),
-            (PrivacyDistance::ZConcentrated(rho_l), PrivacyDistance::ZConcentrated(rho_r)) =>
-                PrivacyDistance::ZConcentrated((rho_l + rho_r)?),
-            _ => return Err(Error::PrivacyMismatch)
-        })
-    }
-}
+impl_trait_privacy_distance!(Add, add, add);
+impl_trait_privacy_distance!(Sub, sub, sub);
+impl_trait_privacy_distance!(Mul, mul, mul);

@@ -187,11 +187,18 @@ pub fn auto_get(input: TokenStream) -> TokenStream {
         items: variants.iter().map(|variant| {
             let ident_variant = &variant.ident;
             let ty_variant = get_ty_singleton(variant);
-            let ident_getter = Ident::new(
-                &ident_variant.to_string().to_lowercase(), Span::call_site());
+            let ident_as_getter = Ident::new(
+                &format!("as_{}", ident_variant.to_string().to_lowercase()), Span::call_site());
+            let ident_to_getter = Ident::new(
+                &format!("to_{}", ident_variant.to_string().to_lowercase()), Span::call_site());
 
             ImplItem::Verbatim(TokenStream2::from(quote! {
-                fn #ident_getter(self) -> Result<#ty_variant, Error> {
+                pub fn #ident_as_getter(&self) -> Result<&#ty_variant, Error> {
+                    if let #ident_enum::#ident_variant(v) = self {
+                        Ok(v)
+                    } else { Err(Error::AtomicMismatch) }
+                }
+                pub fn #ident_to_getter(self) -> Result<#ty_variant, Error> {
                     if let #ident_enum::#ident_variant(v) = self {
                         Ok(v)
                     } else { Err(Error::AtomicMismatch) }

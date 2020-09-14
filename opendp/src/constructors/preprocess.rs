@@ -1,29 +1,30 @@
 
 use crate::{Transformation, Error};
-use crate::base::domain::{Domain, ScalarDomain, Interval};
-use crate::base::value::{Scalar, NumericScalar};
+use crate::base::domain::{Domain, ScalarDomain};
+use crate::base::value::*;
 use crate::base::metric::DataDistance;
 use crate::base::Data;
+use crate::base::functions::{max, min};
 
 pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
 
     let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
-        let ScalarDomain { may_have_nullity, nature } = atomic_type.scalar()?.clone();
+        let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
 
-        let lower = lower.clone().numeric()?;
-        let upper = upper.clone().numeric()?;
+        let lower = lower.to_numeric()?;
+        let upper = upper.to_numeric()?;
 
-        let (prior_lower, prior_upper) = nature.numeric()?.bounds();
+        let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
 
         let lower = prior_lower.as_ref()
-            .map(|prior_lower| lower.max(&prior_lower))
+            .map(|prior_lower| apply_numeric_scalar!(max, lower.clone(), prior_lower.clone()))
             .transpose()?.unwrap_or(lower);
 
         let upper = prior_upper.as_ref()
-            .map(|prior_upper| upper.min(&prior_upper))
+            .map(|prior_upper| apply_numeric_scalar!(min, upper.clone(), prior_upper.clone()))
             .transpose()?.unwrap_or(upper);
 
-        Domain::numeric_scalar(Some(lower), Some(upper), may_have_nullity)
+        Domain::numeric_scalar(Some(lower), Some(upper), *may_have_nullity)
     };
 
     let output_domain = match input_domain.clone() {
@@ -56,19 +57,19 @@ pub fn make_impute_numeric(
     let impute_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
 
         // atomic type must be a scalar
-        let nature = atomic_type.scalar()?.clone().nature;
+        let nature = atomic_type.as_scalar()?.clone().nature;
 
         // retrieve lower and upper bounds for the data domain
-        let (prior_lower, prior_upper) = nature.numeric()?.bounds();
+        let (prior_lower, prior_upper) = nature.to_numeric()?.bounds();
 
         // if lower bound on the input domain exists, then potentially widen it or return none
         let lower = Some(prior_lower
-            .map(|prior_lower| prior_lower.max(&lower))
+            .map(|prior_lower| apply_numeric_scalar!(max, lower.clone(), prior_lower.clone()))
             .transpose()?.unwrap_or(lower.clone()));
 
         // if upper bound on the input domain exists, then potentially widen it or return none
         let upper = Some(prior_upper
-            .map(|prior_upper| prior_upper.min(&upper))
+            .map(|prior_upper| apply_numeric_scalar!(min, upper.clone(), prior_upper.clone()))
             .transpose()?.unwrap_or(upper.clone()));
 
         Domain::numeric_scalar(lower, upper, false)
@@ -95,7 +96,6 @@ pub fn make_impute_numeric(
 
 #[cfg(test)]
 pub mod test_impute_numeric {
-    use crate::base_x::{Domain, NumericScalar, VectorDomain};
     use crate::constructors::preprocess::make_impute_numeric;
     use crate::base::domain::{Domain, VectorDomain};
     use crate::base::value::NumericScalar;

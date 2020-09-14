@@ -12,6 +12,8 @@ thiserror = "1.0.20"
 derive_more = "0.99.9"
 indexmap = "1.5.1"
 noisy_float = "0.1.13"
+itertools = "0.9.0"
+opendp-derive = {path = "../opendp-derive"}
 
 [lib]
 name = "opendp"

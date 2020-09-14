@@ -1,16 +1,23 @@
-use indexmap::map::IndexMap;
-use crate::base::value::{CategoricalVector, NumericScalar};
 use std::cmp::Ordering;
-use crate::Error;
 
-#[derive(derive_more::From, PartialEq, Clone, Debug)]
+use indexmap::map::IndexMap;
+
+
+use opendp_derive::{AutoFrom, AutoGet};
+
+use crate::base::value::*;
+use crate::Error;
+use crate::base::functions::deduplicate;
+
+
+#[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Domain {
     Scalar(ScalarDomain),
     Vector(VectorDomain),
     Dataframe(DataframeDomain),
 }
 
-#[derive(derive_more::From, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct ScalarDomain {
     pub may_have_nullity: bool,
     pub nature: Nature,
@@ -30,17 +37,20 @@ pub struct DataframeDomain {
     pub length: Option<usize>,
 }
 
-#[derive(derive_more::From, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Nature {
     Numeric(Interval),
     Categorical(Categories),
 }
 
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Categories(CategoricalVector);
+
 impl Categories {
     pub fn new(values: CategoricalVector) -> Categories {
-        values.apply()
+        Categories(apply_categorical_vector!(deduplicate, values).unwrap())
     }
+    pub fn get(self) -> CategoricalVector { self.0 }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -85,24 +95,6 @@ impl Domain {
 }
 
 
-macro_rules! impl_get_variant {
-    ($target:ty, $name:ident, $variant:path, $result:ty) => {
-
-        impl $target {
-            pub fn $name(&self) -> Result<&$result, Error> {
-                match self {
-                    $variant(x) => Ok(x),
-                    _ => Err(Error::AtomicMismatch),
-                }
-            }
-        }
-    }
-}
-
-impl_get_variant!(Domain, scalar, Domain::Scalar, ScalarDomain);
-impl_get_variant!(Domain, vector, Domain::Vector, VectorDomain);
-
-
 impl DataframeDomain {
     pub fn assert_non_null(&self) -> Result<(), Error> {
         for atomic_type in self.columns.values() {
@@ -111,10 +103,6 @@ impl DataframeDomain {
         Ok(())
     }
 }
-
-impl_get_variant!(Nature, numeric, Nature::Numeric, Interval);
-impl_get_variant!(Nature, categorical, Nature::Categorical, CategoricalVector);
-
 
 impl ScalarDomain {
     pub fn assert_non_null(&self) -> Result<(), Error> {
