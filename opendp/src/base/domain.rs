@@ -7,7 +7,7 @@ use opendp_derive::{AutoFrom, AutoGet};
 
 use crate::base::value::*;
 use crate::Error;
-use crate::base::functions::deduplicate;
+use crate::base::functions as fun;
 
 
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
@@ -48,7 +48,7 @@ pub struct Categories(CategoricalVector);
 
 impl Categories {
     pub fn new(values: CategoricalVector) -> Categories {
-        Categories(apply_categorical_vector!(deduplicate, values).unwrap())
+        Categories(apply_categorical_vector!(fun::deduplicate, values).unwrap())
     }
     pub fn get(self) -> CategoricalVector { self.0 }
 }
@@ -60,7 +60,7 @@ pub struct Interval(Option<NumericScalar>, Option<NumericScalar>);
 impl Interval {
     pub fn new(lower: Option<NumericScalar>, upper: Option<NumericScalar>) -> Result<Interval, Error> {
         if let (Some(l), Some(u)) = (&lower, &upper) {
-            match l.partial_cmp(u) {
+            match apply_numeric_scalar!(fun::cmp, l, u)? {
                 None => return Err(crate::Error::AtomicMismatch),
                 Some(Ordering::Greater) => return Err(crate::Error::InvalidDomain),
                 _ => ()

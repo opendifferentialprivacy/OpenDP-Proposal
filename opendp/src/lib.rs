@@ -1,7 +1,9 @@
 // mod examples;
 #![allow(dead_code)]
 
-use crate::base::{Data};
+use std::cmp::Ordering;
+
+use crate::base::Data;
 use crate::base::domain::Domain;
 use crate::base::metric::{DataDistance, PrivacyDistance};
 
@@ -97,13 +99,17 @@ pub fn make_adaptive_composition(
                     if query.input_domain != input_domain.clone() {
                         return (Err(Error::DomainMismatch), (data.clone(), privacy_budget.clone()))
                     }
-                    if privacy_budget < &privacy_loss {
-                        (Err(Error::InsufficientBudget), (data.clone(), privacy_budget.clone()))
-                    } else {
-                        match privacy_budget.clone() - privacy_loss {
+                    // check if privacy budget is sufficient
+                    match privacy_budget.partial_cmp(&privacy_loss) {
+                        // if privacy budget is not comparable with usage, error
+                        None => (Err(Error::PrivacyMismatch), (data.clone(), privacy_budget.clone())),
+                        // if privacy budget is sufficient, apply the query
+                        Some(Ordering::Greater) => match privacy_budget.clone() - privacy_loss {
                             Ok(new_budget) => ((query.function)(data.clone()), (data.clone(), new_budget)),
                             Err(e) => (Err(e), (data.clone(), privacy_budget.clone()))
-                        }
+                        },
+                        // if privacy budget is insufficient, error
+                        _ => (Err(Error::InsufficientBudget), (data.clone(), privacy_budget.clone()))
                     }
                 })
             }

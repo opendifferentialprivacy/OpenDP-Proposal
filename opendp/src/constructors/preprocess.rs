@@ -4,7 +4,8 @@ use crate::base::domain::{Domain, ScalarDomain};
 use crate::base::value::*;
 use crate::base::metric::DataDistance;
 use crate::base::Data;
-use crate::base::functions::{max, min};
+use crate::base::functions as fun;
+use std::cmp::Ordering;
 
 pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
 
@@ -16,12 +17,12 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
 
         let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
 
-        let lower = prior_lower.as_ref()
-            .map(|prior_lower| apply_numeric_scalar!(max, lower.clone(), prior_lower.clone()))
+        let lower: NumericScalar = prior_lower.as_ref()
+            .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
             .transpose()?.unwrap_or(lower);
 
-        let upper = prior_upper.as_ref()
-            .map(|prior_upper| apply_numeric_scalar!(min, upper.clone(), prior_upper.clone()))
+        let upper: NumericScalar = prior_upper.as_ref()
+            .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
             .transpose()?.unwrap_or(upper);
 
         Domain::numeric_scalar(Some(lower), Some(upper), *may_have_nullity)
@@ -49,8 +50,8 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
 pub fn make_impute_numeric(
     input_domain: &Domain, lower: NumericScalar, upper: NumericScalar,
 ) -> Result<Transformation, Error> {
-    if lower > upper {
-        return Err(crate::Error::Raw("lower may not be less than upper"))
+    if let Ordering::Greater = apply_numeric_scalar!(fun::cmp, &lower, &upper)? {
+        return Err(Error::Raw("lower may not be greater than upper"))
     }
 
     // function that applies impute transformation to atomic type
@@ -64,12 +65,12 @@ pub fn make_impute_numeric(
 
         // if lower bound on the input domain exists, then potentially widen it or return none
         let lower = Some(prior_lower
-            .map(|prior_lower| apply_numeric_scalar!(max, lower.clone(), prior_lower.clone()))
+            .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
             .transpose()?.unwrap_or(lower.clone()));
 
         // if upper bound on the input domain exists, then potentially widen it or return none
         let upper = Some(prior_upper
-            .map(|prior_upper| apply_numeric_scalar!(min, upper.clone(), prior_upper.clone()))
+            .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
             .transpose()?.unwrap_or(upper.clone()));
 
         Domain::numeric_scalar(lower, upper, false)

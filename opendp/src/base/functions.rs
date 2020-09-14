@@ -29,15 +29,15 @@ define_generic_infallible!(Sub, sub);
 define_generic_infallible!(Mul, mul);
 define_generic_infallible!(Div, div);
 
-pub(crate) fn max<T: PartialOrd>(l: T, r: T) -> Result<T, Error> {
-    match l.partial_cmp(&r) {
+pub(crate) fn max<'a, T: PartialOrd>(l: &'a T, r: &'a T) -> Result<&'a T, Error> {
+    match l.partial_cmp(r) {
         Some(Ordering::Less) => Ok(r),
         Some(Ordering::Greater) | Some(Ordering::Equal) => Ok(l),
         None => Err(Error::AtomicMismatch)
     }
 }
 
-pub(crate) fn min<T: PartialOrd>(l: T, r: T) -> Result<T, Error> {
+pub(crate) fn min<'a, T: PartialOrd>(l: &'a T, r: &'a T) -> Result<&'a T, Error> {
     match l.partial_cmp(&r) {
         Some(Ordering::Greater) => Ok(r),
         Some(Ordering::Less) | Some(Ordering::Equal) => Ok(l),
@@ -47,4 +47,12 @@ pub(crate) fn min<T: PartialOrd>(l: T, r: T) -> Result<T, Error> {
 
 pub(crate) fn deduplicate<T: Eq + Clone + Hash>(values: Vec<T>) -> Result<Vec<T>, Error> {
     Ok(values.into_iter().unique().collect())
+}
+
+pub(crate) fn partial_cmp<T: PartialOrd<T>>(l: T, r: &T) -> Result<Option<Ordering>, Error> {
+    Ok(l.partial_cmp(r))
+}
+
+pub(crate) fn cmp<T: Ord>(l: &T, r: &T) -> Result<Ordering, Error> {
+    Ok(l.cmp(r))
 }

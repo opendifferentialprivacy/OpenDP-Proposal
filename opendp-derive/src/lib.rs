@@ -96,16 +96,16 @@ pub fn apply(input: TokenStream) -> TokenStream {
     //    but we can still construct a token stream directly
     let macro_string = format!(r#"
     macro_rules! {ident_map} {{
-        ($function:ident, $arg1:expr) => {{
+        ($function:expr, $arg1:expr) => {{
             {ident_map}!($function, $arg1;)
         }};
-        ($function:ident, $arg1:expr; $( $option:expr ),* ) => {{
+        ($function:expr, $arg1:expr; $( $option:expr ),* ) => {{
             {unary_match}
         }};
-        ($function:ident, $arg1:expr, $arg2:expr) => {{
+        ($function:expr, $arg1:expr, $arg2:expr) => {{
             {ident_map}!($function, $arg1, $arg2;)
         }};
-        ($function:ident, $arg1:expr, $arg2:expr; $( $option:expr ),* ) => {{
+        ($function:expr, $arg1:expr, $arg2:expr; $( $option:expr ),* ) => {{
             {binary_match}
         }};
     }}
@@ -143,11 +143,18 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
         let ident_variant = &variant.ident;
         let ty_variant = get_ty_singleton(variant);
 
-        TokenStream::from(quote!(impl From<#ty_variant> for #ident_enum {
-            fn from(v: #ty_variant) -> Self {
-                #ident_enum::#ident_variant(v)
+        TokenStream::from(quote!{
+            impl From<#ty_variant> for #ident_enum {
+                fn from(v: #ty_variant) -> Self {
+                    #ident_enum::#ident_variant(v)
+                }
             }
-        }))
+            impl From<&#ty_variant> for #ident_enum {
+                fn from(v: &#ty_variant) -> Self {
+                    #ident_enum::#ident_variant(v.clone())
+                }
+            }
+        })
     }));
 
     output

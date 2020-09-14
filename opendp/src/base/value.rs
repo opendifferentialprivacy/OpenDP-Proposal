@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::Debug;
 
 use indexmap::map::IndexMap;
@@ -82,7 +81,7 @@ pub enum OptionUnsignedIntScalar {
     U128(Option<u128>),
 }
 
-#[derive(PartialEq, Eq, Ord, Clone, Debug, AutoFrom, AutoGet, Apply)]
+#[derive(PartialEq, Eq, Clone, Debug, AutoFrom, AutoGet, Apply)]
 pub enum FiniteFloatScalar {
     F32(R32),
     F64(R64),
@@ -127,104 +126,6 @@ pub enum CategoricalScalar {
     #[reapply]
     FiniteFloat(FiniteFloatScalar)
 }
-
-// TRAIT IMPLEMENTATIONS
-// Trait : PartialOrd
-impl PartialOrd for SignedIntScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use SignedIntScalar::*;
-        match (self, other) {
-            (I8(x), I8(y)) => x.partial_cmp(y),
-            (I16(x), I16(y)) => x.partial_cmp(y),
-            (I32(x), I32(y)) => x.partial_cmp(y),
-            (I64(x), I64(y)) => x.partial_cmp(y),
-            (I128(x), I128(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for OptionUnsignedIntScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use OptionUnsignedIntScalar::*;
-        match (self, other) {
-            (U8(x), U8(y)) => x.partial_cmp(y),
-            (U16(x), U16(y)) => x.partial_cmp(y),
-            (U32(x), U32(y)) => x.partial_cmp(y),
-            (U64(x), U64(y)) => x.partial_cmp(y),
-            (U128(x), U128(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for OptionSignedIntScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use OptionSignedIntScalar::*;
-        match (self, other) {
-            (I8(x), I8(y)) => x.partial_cmp(y),
-            (I16(x), I16(y)) => x.partial_cmp(y),
-            (I32(x), I32(y)) => x.partial_cmp(y),
-            (I64(x), I64(y)) => x.partial_cmp(y),
-            (I128(x), I128(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for UnsignedIntScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use UnsignedIntScalar::*;
-        match (self, other) {
-            (U8(x), U8(y)) => x.partial_cmp(y),
-            (U16(x), U16(y)) => x.partial_cmp(y),
-            (U32(x), U32(y)) => x.partial_cmp(y),
-            (U64(x), U64(y)) => x.partial_cmp(y),
-            (U128(x), U128(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for FiniteFloatScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use FiniteFloatScalar::*;
-        match (self, other) {
-            (F32(x), F32(y)) => x.partial_cmp(y),
-            (F64(x), F64(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for FloatScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use FloatScalar::*;
-        match (self, other) {
-            (F64(l), F64(r)) => l.partial_cmp(r),
-            (F32(l), F32(r)) => l.partial_cmp(r),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for NumericScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use NumericScalar::*;
-        match (self, other) {
-            (FiniteFloat(x), FiniteFloat(y)) => x.partial_cmp(y),
-            (SignedInt(x), SignedInt(y)) => x.partial_cmp(y),
-            (UnsignedInt(x), UnsignedInt(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-impl PartialOrd for OptionNumericScalar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use OptionNumericScalar::*;
-        match (self, other) {
-            (Float(x), Float(y)) => x.partial_cmp(y),
-            (OptionSignedInt(x), OptionSignedInt(y)) => x.partial_cmp(y),
-            (OptionUnsignedInt(x), OptionUnsignedInt(y)) => x.partial_cmp(y),
-            _ => None
-        }
-    }
-}
-
 
 // IMPLEMENTATIONS
 // specialize to subset type
@@ -455,6 +356,16 @@ macro_rules! impl_from {
                 Vector::from(<$vector_type>::from(x))
             }
         }
+        impl From<&$atomic_type> for Scalar {
+            fn from(x: &$atomic_type) -> Self {
+                Scalar::from(<$scalar_type>::from(x.clone()))
+            }
+        }
+        impl From<&Vec<$atomic_type>> for Vector {
+            fn from(x: &Vec<$atomic_type>) -> Self {
+                Vector::from(<$vector_type>::from(x.clone()))
+            }
+        }
     }
 }
 impl_from!(f64, FloatScalar, FloatVector);
@@ -493,6 +404,16 @@ macro_rules! impl_numeric_from {
                 NumericVector::from(<$vector_type>::from(x))
             }
         }
+        impl From<&$atomic_type> for NumericScalar {
+            fn from(x: &$atomic_type) -> Self {
+                NumericScalar::from(<$scalar_type>::from(x.clone()))
+            }
+        }
+        impl From<&Vec<$atomic_type>> for NumericVector {
+            fn from(x: &Vec<$atomic_type>) -> Self {
+                NumericVector::from(<$vector_type>::from(x.clone()))
+            }
+        }
     }
 }
 impl_numeric_from!(R64, FiniteFloatScalar, FiniteFloatVector);
@@ -517,6 +438,16 @@ macro_rules! impl_categorical_from {
         impl From<Vec<$atomic_type>> for CategoricalVector {
             fn from(x: Vec<$atomic_type>) -> Self {
                 CategoricalVector::from(<$vector_type>::from(x))
+            }
+        }
+        impl From<&$atomic_type> for CategoricalScalar {
+            fn from(x: &$atomic_type) -> Self {
+                CategoricalScalar::from(<$scalar_type>::from(x.clone()))
+            }
+        }
+        impl From<&Vec<$atomic_type>> for CategoricalVector {
+            fn from(x: &Vec<$atomic_type>) -> Self {
+                CategoricalVector::from(<$vector_type>::from(x.clone()))
             }
         }
     }
