@@ -1,6 +1,5 @@
 
 use crate::{constructors, Transformation};
-use crate::base_x::{Domain, VectorDomain};
 
 #[no_mangle]
 pub extern "C" fn make_default_domain() -> *mut Domain {
