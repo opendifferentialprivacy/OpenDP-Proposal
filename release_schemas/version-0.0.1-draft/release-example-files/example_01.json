@@ -1,6 +1,6 @@
 {
    "self":{
-      "schema_version":"https://raw.githubusercontent.com/privacytoolsproject/PSI-Library/develop/v-1-1/dp-schema.json",
+      "schema_version":"https://raw.githubusercontent.com/opendifferentialprivacy/OpenDP-Experimental/master/release_schemas/version-0.0.1-draft/release-schema.json",
       "created":"2020-02-10T17:26:39",
       "description":"Created by service/pypi package, etc"
    },
