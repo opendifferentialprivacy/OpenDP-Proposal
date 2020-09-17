@@ -49,6 +49,7 @@ fn sensitivity_hamming<T>(lower: T, upper: T) -> T
     upper.sub(lower)
 }
 
+/// constructor to build a sum transformation over a vector
 fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
 
     // destructure the descriptor for the input domain, enforcing that it is a vector
@@ -56,10 +57,7 @@ fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
         atomic_type,
         is_nonempty: _,
         length
-    } = match &input_domain {
-        Domain::Vector(vector_domain) => vector_domain,
-        _ => return Err(Error::InvalidDomain)
-    };
+    } = input_domain.as_vector()?;
 
     let atomic_type: &ScalarDomain = atomic_type.as_scalar()?;
     let (lower, upper) = atomic_type.nature.as_numeric()?.clone().bounds();
@@ -86,14 +84,18 @@ fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
         input_domain,
         output_domain,
         stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| {
+            // ensure existence of bounds
             let lower = lower.clone().ok_or_else(|| Error::UnknownBound)?;
             let upper = upper.clone().ok_or_else(|| Error::UnknownBound)?;
+
+            // L1 and L2 sensitivity are the same
             let d_out = match d_out {
                 DataDistance::L1Sensitivity(v) => v,
                 DataDistance::L2Sensitivity(v) => v,
                 _ => return Err(Error::DistanceMismatch)
             }.clone();
 
+            // check relation depending on input distance type
             match d_in {
                 DataDistance::Symmetric(d_in) =>
                     apply_numeric_scalar!(relation_symmetric, lower, upper, d_out; d_in),
@@ -105,12 +107,12 @@ fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
 
         // actually execute the algorithm
         function: Box::new(move |data: Data| {
-            let data = data.to_value()?.to_vector()?.to_numeric()?;
-
-            let data: NumericVector = apply_numeric_vector!(fun::sort, data)?;
-
-            apply_numeric_vector!(sum, data)
-                .map(|v| Data::Value(Value::Scalar(v)))
+            match data {
+                Data::Value(data) =>
+                    apply_numeric_vector!(sum, data.to_vector()?.to_numeric()?)
+                        .map(|v| Data::Value(Value::Scalar(v))),
+                Data::Pointer(_) => unimplemented!()
+            }
         })
     })
 }
