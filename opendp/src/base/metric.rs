@@ -34,11 +34,11 @@ pub struct L1Sensitivity;
 #[derive(Clone, Debug, PartialEq)]
 pub struct L2Sensitivity;
 
-// substitute
+// add/remove
 #[derive(Clone, Debug, PartialEq)]
 pub struct Symmetric;
 
-// add/remove
+// substitute
 #[derive(Clone, Debug, PartialEq)]
 pub struct Hamming;
 
@@ -51,8 +51,8 @@ pub struct ZConcentratedDP;
 
 #[derive(Clone, PartialEq)]
 pub enum DataDistance {
-    Symmetric(NumericScalar),
-    Hamming(NumericScalar),
+    Symmetric(u32),
+    Hamming(u32),
     L1Sensitivity(NumericScalar),
     L2Sensitivity(NumericScalar),
 }
@@ -107,8 +107,8 @@ impl PartialOrd for DataDistance {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         use DataDistance::*;
         match (self, other) {
-            (Symmetric(l), Symmetric(r)) => apply_numeric_scalar!(fun::cmp, l, r).ok().and_then(|v| v),
-            (Hamming(l), Hamming(r)) => apply_numeric_scalar!(fun::cmp, l, r).ok().and_then(|v| v),
+            (Symmetric(l), Symmetric(r)) => l.partial_cmp(r),
+            (Hamming(l), Hamming(r)) => l.partial_cmp(r),
             (L1Sensitivity(l), L1Sensitivity(r)) => apply_numeric_scalar!(fun::cmp, l, r).ok().and_then(|v| v),
             (L2Sensitivity(l), L2Sensitivity(r)) => apply_numeric_scalar!(fun::cmp, l, r).ok().and_then(|v| v),
             _ => None

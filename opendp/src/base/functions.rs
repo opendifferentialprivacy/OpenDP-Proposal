@@ -29,20 +29,25 @@ define_generic_infallible!(Sub, sub);
 define_generic_infallible!(Mul, mul);
 define_generic_infallible!(Div, div);
 
-pub(crate) fn max<'a, T: PartialOrd>(l: &'a T, r: &'a T) -> Result<&'a T, Error> {
-    match l.partial_cmp(r) {
+pub(crate) fn max<T: PartialOrd>(l: T, r: T) -> Result<T, Error> {
+    match l.partial_cmp(&r) {
         Some(Ordering::Less) => Ok(r),
         Some(Ordering::Greater) | Some(Ordering::Equal) => Ok(l),
         None => Err(Error::AtomicMismatch)
     }
 }
 
-pub(crate) fn min<'a, T: PartialOrd>(l: &'a T, r: &'a T) -> Result<&'a T, Error> {
+pub(crate) fn min<T: PartialOrd>(l: T, r: T) -> Result<T, Error> {
     match l.partial_cmp(&r) {
         Some(Ordering::Greater) => Ok(r),
         Some(Ordering::Less) | Some(Ordering::Equal) => Ok(l),
         None => Err(Error::AtomicMismatch)
     }
+}
+
+pub(crate) fn sort<T: Ord + PartialOrd>(mut v: Vec<T>) -> Result<Vec<T>, Error> {
+    v.sort();
+    Ok(v)
 }
 
 pub(crate) fn deduplicate<T: Eq + Clone + Hash>(values: Vec<T>) -> Result<Vec<T>, Error> {

@@ -12,14 +12,12 @@ pub fn make_row_transform(
     input_domain: Domain,
     output_domain: Domain,
     function: Box<dyn Fn(Data) -> Result<Data, Error>>,
-    hint: Option<Box<dyn Fn(&DataDistance, &DataDistance) -> DataDistance>>,
 ) -> Transformation {
     Transformation {
         input_domain,
         output_domain,
-        stability_relation: Box::new(move |_input_distance: &DataDistance, _output_distance: &DataDistance| -> bool { true }),
+        stability_relation: Box::new(move |_input_distance: &DataDistance, _output_distance: &DataDistance| { Ok(true) }),
         function,
-        hint,
     }
 }
 

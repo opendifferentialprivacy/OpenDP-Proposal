@@ -18,7 +18,7 @@ pub enum Value {
 pub struct Dataframe(pub IndexMap<CategoricalScalar, Value>);
 
 
-// ~~~~ SCALAR ~~~~
+// ~~~~ SCALAR ~~~~`
 // TYPES
 
 #[derive(Clone, Debug, AutoFrom, AutoGet, Apply)]

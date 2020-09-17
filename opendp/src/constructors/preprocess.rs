@@ -33,16 +33,15 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
             domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
             Domain::Vector(domain)
         }
-        _ => return Err(crate::Error::Raw("invalid input domain"))
+        _ => return Err(Error::Raw("invalid input domain"))
     };
 
     Ok(Transformation {
         input_domain,
         output_domain,
-        stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| in_dist <= out_dist),
+        stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
         // issue: how to differentiate between calls out to different execution environments
-        function: Box::new(move |_data: Data| Err(crate::Error::NotImplemented)),
-        hint: Some(Box::new(move |_in_dist: &DataDistance, out_dist: &DataDistance| out_dist.clone())),
+        function: Box::new(move |_data: Data| Err(crate::Error::NotImplemented))
     })
 }
 
@@ -89,9 +88,8 @@ pub fn make_impute_numeric(
     Ok(Transformation {
         input_domain: input_domain.clone(),
         output_domain,
-        stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| d_in <= d_out),
+        stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| Ok(d_in <= d_out)),
         function: Box::new(move |_data| Err(crate::Error::NotImplemented)),
-        hint: None,
     })
 }
 

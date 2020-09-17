@@ -30,10 +30,9 @@ pub fn make_tt_chain(
         output_domain: trans_2_output_domain,
         stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| {
             let d_mid = (hint.as_ref().unwrap())(d_in, d_out);
-            (trans_2_stability_relation)(&d_mid, d_out) && (trans_stability_relation)(d_in, &d_mid)
+            Ok((trans_2_stability_relation)(&d_mid, d_out)? && (trans_stability_relation)(d_in, &d_mid)?)
         }),
         function: Box::new(move |data: Data| (trans_2_function)((trans_function)(data)?)),
-        hint: None,
     })
 }
 
@@ -63,7 +62,7 @@ pub fn make_mt_chain(
         input_domain: trans_input_domain,
         privacy_relation: Box::new(move |d_in: &DataDistance, d_out: &PrivacyDistance| {
             let d_mid = (hint.as_ref().unwrap())(d_in, d_out);
-            (meas_privacy_relation)(&d_mid, d_out) && (trans_stability_relation)(d_in, &d_mid)
+            Ok((meas_privacy_relation)(&d_mid, d_out)? && (trans_stability_relation)(d_in, &d_mid)?)
         }),
         function: Box::new(move |data: Data| (meas_function)((trans_function)(data)?)),
     })

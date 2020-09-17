@@ -57,4 +57,7 @@ lib_wrapper = LibraryWrapper()
 default_domain = lib_wrapper.make_default_domain()
 clamp_transform = lib_wrapper.make_clamp(default_domain, 0., 1.)
 
+# I can parse this as a struct in python ctypes, and modify the domain
+clamp_transform
+
 print(clamp_transform)

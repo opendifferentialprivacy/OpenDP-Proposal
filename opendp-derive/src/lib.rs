@@ -86,33 +86,73 @@ pub fn apply(input: TokenStream) -> TokenStream {
         _ => Err(Error::AtomicMismatch)
     }).into());
 
+    let trinary_arms = variants.iter()
+        .map(|variant| {
+            let Variant { ident: ident_variant, attrs, .. } = variant;
+            // if reapply attribute is set
+            let body = if attrs.iter()
+                .any(|attr| attr.path.is_ident(REAPPLY_ATTR_NAME)) {
+
+                // retrieve the ident of the type contained within this variant
+                let ident_field_ty = if let Type::Path(ty_path) = get_ty_singleton(variant) {
+                    &ty_path.path.segments.last().unwrap().ident
+                } else {
+                    panic!("Invalid type on enum field")
+                };
+
+                let ident_apply = Ident::new(
+                    &format!("apply_{}", ident_field_ty.to_string().to_snake_case()),
+                    Span::call_site());
+
+                Expr::Verbatim(quote!(#ident_apply!(__function, arg1, arg2, arg3; __options)).into())
+            } else {
+                Expr::Verbatim(quote!(__function(arg1, arg2, arg3, __options).map(|v| v.into())).into())
+            };
+            quote!((#ident_enum::#ident_variant(arg1), #ident_enum::#ident_variant(arg2), #ident_enum::#ident_variant(arg3)) => #body)
+        })
+        .collect::<Vec<_>>();
+
+    let matcher_trinary = Expr::Verbatim(quote!(match (__arg1, __arg2, __arg3) {
+        #(#trinary_arms,)*
+        _ => Err(Error::AtomicMismatch)
+    }).into());
+
     let sub_macro_var = |text: String| text
         .replace("__function", "$function")
         .replace("__arg1", "$arg1")
         .replace("__arg2", "$arg2")
+        .replace("__arg3", "$arg3")
         .replace("__options", "$( $option ),*");
 
     // syn cannot seem to express declarative macros in its AST,
     //    but we can still construct a token stream directly
+    // TODO: variadic matching of leading args
     let macro_string = format!(r#"
     macro_rules! {ident_map} {{
-        ($function:expr, $arg1:expr) => {{
+        ($function:path, $arg1:expr) => {{
             {ident_map}!($function, $arg1;)
         }};
-        ($function:expr, $arg1:expr; $( $option:expr ),* ) => {{
+        ($function:path, $arg1:expr; $( $option:expr ),*) => {{
             {unary_match}
         }};
-        ($function:expr, $arg1:expr, $arg2:expr) => {{
+        ($function:path, $arg1:expr, $arg2:expr) => {{
             {ident_map}!($function, $arg1, $arg2;)
         }};
-        ($function:expr, $arg1:expr, $arg2:expr; $( $option:expr ),* ) => {{
+        ($function:path, $arg1:expr, $arg2:expr; $( $option:expr ),*) => {{
             {binary_match}
+        }};
+        ($function:path, $arg1:expr, $arg2:expr, $arg3:expr) => {{
+            {ident_map}!($function, $arg1, $arg2, $arg3;)
+        }};
+        ($function:path, $arg1:expr, $arg2:expr, $arg3:expr; $( $option:expr ),*) => {{
+            {trinary_match}
         }};
     }}
     "#,
         ident_map=ident_map,
         unary_match=sub_macro_var(matcher_unary.to_token_stream().to_string()),
-        binary_match=sub_macro_var(matcher_binary.to_token_stream().to_string())
+        binary_match=sub_macro_var(matcher_binary.to_token_stream().to_string()),
+        trinary_match=sub_macro_var(matcher_trinary.to_token_stream().to_string())
     );
 
     macro_string.parse().unwrap()
@@ -195,9 +235,9 @@ pub fn auto_get(input: TokenStream) -> TokenStream {
             let ident_variant = &variant.ident;
             let ty_variant = get_ty_singleton(variant);
             let ident_as_getter = Ident::new(
-                &format!("as_{}", ident_variant.to_string().to_lowercase()), Span::call_site());
+                &format!("as_{}", ident_variant.to_string().to_snake_case()), Span::call_site());
             let ident_to_getter = Ident::new(
-                &format!("to_{}", ident_variant.to_string().to_lowercase()), Span::call_site());
+                &format!("to_{}", ident_variant.to_string().to_snake_case()), Span::call_site());
 
             ImplItem::Verbatim(TokenStream2::from(quote! {
                 pub fn #ident_as_getter(&self) -> Result<&#ty_variant, Error> {

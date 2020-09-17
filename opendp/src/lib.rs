@@ -26,12 +26,18 @@ pub enum Error {
     AtomicMismatch,
     #[error("Privacy Mismatch")]
     PrivacyMismatch,
+    #[error("Distance Mismatch")]
+    DistanceMismatch,
     #[error("Invalid Domain")]
     InvalidDomain,
+    #[error("Unsupported Cast")]
+    UnsupportedCast,
     #[error("Overflow")]
     Overflow,
-    #[error("Insufficient budget")]
+    #[error("Insufficient Budget")]
     InsufficientBudget,
+    #[error("Unknown Bound")]
+    UnknownBound,
     #[error("Potential Nullity")]
     PotentialNullity,
     #[error("{0}")]
@@ -45,14 +51,14 @@ pub enum Error {
 pub struct Transformation {
     pub(crate) input_domain: Domain,
     pub(crate) output_domain: Domain,
-    pub(crate) stability_relation: Box<dyn Fn(&DataDistance, &DataDistance) -> bool>,
+    pub(crate) stability_relation: Box<dyn Fn(&DataDistance, &DataDistance) -> Result<bool, Error>>,
     pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>,
-    pub(crate) hint: Option<Box<dyn Fn(&DataDistance, &DataDistance) -> DataDistance>>
 }
 
 pub struct Measurement {
     pub(crate) input_domain: Domain,
-    pub(crate) privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> bool>,
+    // pub(crate) input_metric: Metric,
+    pub(crate) privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> Result<bool, Error>>,
     pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
 }
 
