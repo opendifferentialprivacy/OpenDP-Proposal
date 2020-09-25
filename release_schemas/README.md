@@ -18,21 +18,25 @@ Directory structure:
 |       |-- example_01.json
 |       |-- example_02.json
 |       |-- example_nn.json 
+|   |-- README.MD
 |-- version-0.2.0
 |   |-- ddi_conversion_0_2_0
 |       |-- ddi_covert.py 
 |       |-- (other files)
-    |-- release-schema.json
-    |-- release-example-files
-        |-- example_01.json
-        |-- example_02.json 
-        |-- example_nn.json 
+|   |-- release-schema.json
+|   |-- release-example-files
+|       |-- example_01.json
+|       |-- example_02.json 
+|       |-- example_nn.json 
+|   |-- README.MD
 
 ```
 
 ## Notes
   - `release-schema.json` 
     - A JSON schema that can validate each of the files in the related `release-example-files` directory
+  - `README.MD`
+    - Notes related to the schema. Can be development related including links to other docs, etc.
   - `test_schemas.py` 
     - Test each example file against its schema to check validity
     - Run DDI conversions, converting the example releases to DDI format
