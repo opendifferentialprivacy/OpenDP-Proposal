@@ -1,0 +1,43 @@
+{
+  "self": {
+    "schema_version": "0",
+    "created": "2020-1-1"
+  },
+  "dataset": {
+    "unitOfAnalysis": "unit",
+    "structure": "wide",
+    "rowCount": 0,
+    "variableCount": 1
+  },
+  "dp-releases": [
+    {
+      "statistic": "mean",
+      "submission": 0,
+      "variables": {
+        "arbitrary-key": "age"
+      },
+      "releaseInfo": {
+        "mechanism": "Laplace"
+      },
+      "nodeID": 11,
+      "postprocess": false,
+      "accuracy": {
+        "accuracyValue": 100.0
+      },
+      "batch": 0,
+      "privacyLoss": {
+        "delta": 0.0,
+        "epsilon": 0.65,
+        "name": "approx dp"
+      },
+      "algorithm": {
+        "lowerbound": 0.0,
+        "upperbound": 100.0,
+        "implementation": "resize",
+        "n": 1000,
+        "cite": "",
+        "name": ""
+      }
+    }
+  ]
+}
