@@ -15,7 +15,7 @@ macro_rules! impl_trait_through_method {
 /// Unified trait for computing the absolute value
 /// .abs() is inconsistent across types.
 /// Implementations are scattered across methods, Abs, Float, or missing
-pub(crate) trait OmniAbs {
+pub trait OmniAbs {
     fn omni_abs(self) -> Self;
 }
 impl_trait_through_method!(OmniAbs, omni_abs, abs, f32, f64, R32, R64, i8, i16, i32, i64, i128);

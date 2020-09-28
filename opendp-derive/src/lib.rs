@@ -128,6 +128,7 @@ pub fn apply(input: TokenStream) -> TokenStream {
     //    but we can still construct a token stream directly
     // TODO: variadic matching of leading args
     let macro_string = format!(r#"
+    #[macro_export]
     macro_rules! {ident_map} {{
         ($function:path, $arg1:expr) => {{
             {ident_map}!($function, $arg1;)

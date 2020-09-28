@@ -130,7 +130,7 @@ pub enum CategoricalScalar {
 // IMPLEMENTATIONS
 // specialize to subset type
 impl Scalar {
-    pub(crate) fn to_numeric(self) -> Result<NumericScalar, Error> {
+    pub fn to_numeric(self) -> Result<NumericScalar, Error> {
         Ok(match self {
             Scalar::SignedInt(v) => NumericScalar::SignedInt(v),
             Scalar::UnsignedInt(v) => NumericScalar::UnsignedInt(v),
@@ -138,7 +138,7 @@ impl Scalar {
             _ => return Err(Error::AtomicMismatch)
         })
     }
-    pub(crate) fn to_categorical(self) -> Result<CategoricalScalar, Error> {
+    pub fn to_categorical(self) -> Result<CategoricalScalar, Error> {
         Ok(match self {
             Scalar::Bool(v) => CategoricalScalar::Bool(v),
             Scalar::String(v) => CategoricalScalar::String(v),
@@ -151,7 +151,7 @@ impl Scalar {
 }
 // generalize subset types
 impl NumericScalar {
-    pub(crate) fn to_scalar(self) -> Scalar {
+    pub fn to_scalar(self) -> Scalar {
         match self {
             NumericScalar::FiniteFloat(v) => Scalar::FiniteFloat(v),
             NumericScalar::SignedInt(v) => Scalar::SignedInt(v),
@@ -160,7 +160,7 @@ impl NumericScalar {
     }
 }
 impl OptionNumericScalar {
-    pub(crate) fn to_scalar(self) -> Scalar {
+    pub fn to_scalar(self) -> Scalar {
         match self {
             OptionNumericScalar::Float(v) => Scalar::Float(v),
             OptionNumericScalar::OptionSignedInt(v) => Scalar::OptionSignedInt(v),
@@ -169,7 +169,7 @@ impl OptionNumericScalar {
     }
 }
 impl CategoricalScalar {
-    pub(crate) fn to_scalar(self) -> Scalar {
+    pub fn to_scalar(self) -> Scalar {
         match self {
             CategoricalScalar::Bool(v) => Scalar::Bool(v),
             CategoricalScalar::String(v) => Scalar::String(v),

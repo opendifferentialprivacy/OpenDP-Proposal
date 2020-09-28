@@ -41,7 +41,7 @@ pub enum Error {
     #[error("Potential Nullity")]
     PotentialNullity,
     #[error("{0}")]
-    Raw(&'static str),
+    Raw(String),
     #[error("Not Implemented")]
     NotImplemented
 }
@@ -60,6 +60,28 @@ pub struct Measurement {
     // pub(crate) input_metric: Metric,
     pub(crate) privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> Result<bool, Error>>,
     pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
+}
+
+impl Transformation {
+    pub fn input_domain(&self) -> Domain {
+        self.input_domain.clone()
+    }
+    pub fn output_domain(&self) -> Domain {
+        self.output_domain.clone()
+    }
+}
+
+impl Measurement {
+    pub fn function(&self, data: Data, in_dist: &DataDistance, out_dist: &PrivacyDistance) -> Result<Data, Error> {
+        if !self.privacy_relation(in_dist, out_dist)? {
+            return Err(Error::InsufficientBudget)
+        }
+        (self.function)(data)
+    }
+
+    pub fn privacy_relation(&self, in_dist: &DataDistance, out_dist: &PrivacyDistance) -> Result<bool, Error> {
+        (self.privacy_relation)(in_dist, out_dist)
+    }
 }
 
 pub struct InteractiveMeasurement {

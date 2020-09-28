@@ -1,16 +1,16 @@
+use std::iter::Sum;
 use std::ops::{Mul, Sub};
+
+use num::cast::cast;
+use num::NumCast;
 
 use crate::{Error, Transformation};
 use crate::base::Data;
-use crate::base::domain::{Domain, ScalarDomain, VectorDomain, Nature, Interval};
-use crate::base::metric::DataDistance;
-use crate::base::value::*;
+use crate::base::domain::{Domain, ScalarDomain, VectorDomain};
 use crate::base::functions as fun;
+use crate::base::metric::DataDistance;
 use crate::base::traits::OmniAbs;
-use num::{NumCast};
-use num::cast::cast;
-use std::iter::Sum;
-
+use crate::base::value::*;
 
 fn mul_constant<T>(l: T, r: usize) -> Result<T, Error>
     where T: Mul<Output=T> + NumCast {
@@ -23,17 +23,17 @@ fn sum<T: Sum<T>>(data: Vec<T>) -> Result<T, Error> {
 }
 
 // SYMMETRIC
-fn relation_symmetric<T: PartialOrd + OmniAbs + NumCast + Mul<Output=T>>(
-    lower: T, upper: T, d_out: T, d_in: &u32
-) -> Result<bool, Error> {
+// d_out >= d_in * sens
+fn relation_symmetric<T>(lower: T, upper: T, d_out: T, d_in: &u32) -> Result<bool, Error>
+    where T: PartialOrd + OmniAbs + NumCast + Mul<Output=T> {
     let d_in: T = cast::<u32, T>(*d_in).ok_or_else(|| Error::UnsupportedCast)?;
     sensitivity_symmetric(lower, upper)
         .map(|sens| d_out >= d_in * sens)
 }
 
-fn sensitivity_symmetric<T: PartialOrd + OmniAbs>(
-    lower: T, upper: T
-) -> Result<T, Error> {
+// max(|m|, |M|)
+pub fn sensitivity_symmetric<T>(lower: T, upper: T) -> Result<T, Error>
+    where T: PartialOrd + OmniAbs {
     fun::max(lower.omni_abs(), upper.omni_abs())
 }
 
@@ -45,12 +45,12 @@ fn relation_hamming<T>(lower: T, upper: T, d_out: T, d_in: &u32) -> Result<bool,
 }
 
 fn sensitivity_hamming<T>(lower: T, upper: T) -> T
-    where T: PartialOrd + Sub<Output=T> + NumCast {
+    where T: Sub<Output=T> {
     upper.sub(lower)
 }
 
 /// constructor to build a sum transformation over a vector
-fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
+pub fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
 
     // destructure the descriptor for the input domain, enforcing that it is a vector
     let VectorDomain {
@@ -63,22 +63,21 @@ fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
     let (lower, upper) = atomic_type.nature.as_numeric()?.clone().bounds();
 
     // derive new output domain
-    let output_domain = Domain::Scalar(ScalarDomain {
-        may_have_nullity: atomic_type.may_have_nullity,
-        nature: Nature::Numeric(Interval::new(
-            // derive new lower bound
-            match (&lower, length) {
-                (Some(lower), Some(length)) =>
-                    Some(apply_numeric_scalar!(mul_constant, lower.clone(); *length)?),
-                _ => None
-            },
-            // derive new upper bound
-            match (&upper, length) {
-                (Some(upper), Some(length)) =>
-                    Some(apply_numeric_scalar!(mul_constant, upper.clone(); *length)?),
-                _ => None
-            })?)
-    });
+    let output_domain = Domain::numeric_scalar(
+        // derive new lower bound
+        match (&lower, length) {
+            (Some(lower), Some(length)) =>
+                Some(apply_numeric_scalar!(mul_constant, lower.clone(); *length)?),
+            _ => None
+        },
+        // derive new upper bound
+        match (&upper, length) {
+            (Some(upper), Some(length)) =>
+                Some(apply_numeric_scalar!(mul_constant, upper.clone(); *length)?),
+            _ => None
+        },
+        atomic_type.may_have_nullity
+    )?;
 
     Ok(Transformation {
         input_domain,

@@ -6,6 +6,7 @@ use crate::base::metric::DataDistance;
 pub mod chain;
 pub mod preprocess;
 pub mod aggregate;
+pub mod mechanisms;
 
 
 pub fn make_row_transform(

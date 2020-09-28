@@ -7,50 +7,58 @@ use crate::base::Data;
 use crate::base::functions as fun;
 use std::cmp::Ordering;
 
-pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
-
-    let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
-        let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
-
-        let lower = lower.to_numeric()?;
-        let upper = upper.to_numeric()?;
-
-        let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
-
-        let lower: NumericScalar = prior_lower.as_ref()
-            .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
-            .transpose()?.unwrap_or(lower);
-
-        let upper: NumericScalar = prior_upper.as_ref()
-            .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
-            .transpose()?.unwrap_or(upper);
-
-        Domain::numeric_scalar(Some(lower), Some(upper), *may_have_nullity)
-    };
-
-    let output_domain = match input_domain.clone() {
-        Domain::Vector(mut domain) => {
-            domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
-            Domain::Vector(domain)
-        }
-        _ => return Err(Error::Raw("invalid input domain"))
-    };
-
-    Ok(Transformation {
-        input_domain,
-        output_domain,
-        stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
-        // issue: how to differentiate between calls out to different execution environments
-        function: Box::new(move |_data: Data| Err(crate::Error::NotImplemented))
-    })
-}
+// fn clamp<T: PartialOrd>(v: T, l: T, u: T) -> Result<T, Error> {
+//     fun::min(fun::max(v, l)?, u)
+// }
+//
+// fn clamp_vec<T: PartialOrd>(v: Vec<T>, l: T, u: T) -> Result<Vec<T>, Error> {
+//     v.into_iter().map(clamp).collect()
+// }
+//
+// pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
+//
+//     let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
+//         let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
+//
+//         let lower = lower.to_numeric()?;
+//         let upper = upper.to_numeric()?;
+//
+//         let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
+//
+//         let lower: NumericScalar = prior_lower.as_ref()
+//             .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
+//             .transpose()?.unwrap_or(lower);
+//
+//         let upper: NumericScalar = prior_upper.as_ref()
+//             .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
+//             .transpose()?.unwrap_or(upper);
+//
+//         Domain::numeric_scalar(Some(lower), Some(upper), *may_have_nullity)
+//     };
+//
+//     let output_domain = match input_domain.clone() {
+//         Domain::Vector(mut domain) => {
+//             domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
+//             Domain::Vector(domain)
+//         }
+//         _ => return Err(Error::Raw("invalid input domain"))
+//     };
+//
+//     Ok(Transformation {
+//         input_domain,
+//         output_domain,
+//         stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
+//         // issue: how to differentiate between calls out to different execution environments
+//         function: Box::new(move |_data: Data| Err(crate::Error::NotImplemented))
+//     })
+// }
 
 
 pub fn make_impute_numeric(
     input_domain: &Domain, lower: NumericScalar, upper: NumericScalar,
 ) -> Result<Transformation, Error> {
     if let Ordering::Greater = apply_numeric_scalar!(fun::cmp, &lower, &upper)? {
-        return Err(Error::Raw("lower may not be greater than upper"))
+        return Err(Error::Raw("lower may not be greater than upper".to_string()))
     }
 
     // function that applies impute transformation to atomic type
