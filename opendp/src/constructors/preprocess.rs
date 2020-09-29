@@ -6,6 +6,7 @@ use crate::base::metric::DataDistance;
 use crate::base::Data;
 use crate::base::functions as fun;
 use std::cmp::Ordering;
+use opendp_derive::{apply_numeric};
 
 // fn clamp<T: PartialOrd>(v: T, l: T, u: T) -> Result<T, Error> {
 //     fun::min(fun::max(v, l)?, u)
@@ -80,6 +81,7 @@ pub fn make_impute_numeric(
             .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
             .transpose()?.unwrap_or(upper.clone()));
 
+        apply_numeric!(fun::min, &upper => NumericScalar, &prior_upper => NumericScalar);
         Domain::numeric_scalar(lower, upper, false)
     };
 

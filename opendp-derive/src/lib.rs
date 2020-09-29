@@ -1,13 +1,212 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
+use std::iter::FromIterator;
 
 use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use quote::ToTokens;
-use syn::{Data, DataEnum, DeriveInput, Expr, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Path, PathSegment, Type, TypePath, Variant};
+use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, ExprTuple, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, PatTuple, Result, Type, TypePath, Variant, PatTupleStruct, PatIdent, ExprMethodCall, ExprCall, ExprPath, ExprClosure, ReturnType};
 use syn::export::TokenStream2;
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::Token;
+
+const CATEGORICAL: [&'static str; 14] = ["String", "Bool", "R64", "R32", "I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
+const OPTION_CATEGORICAL: [&'static str; 14] = ["OptionString", "OptionBool", "OptionR64", "OptionR32", "OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
+const NUMERIC: [&'static str; 12] = ["R64", "R32", "I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
+const FINITE_FLOAT: [&'static str; 2] = ["R64", "R32"];
+const INTEGER: [&'static str; 10] = ["I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
+const OPTION_FLOAT: [&'static str; 2] = ["F64", "F32"];
+const OPTION_INTEGER: [&'static str; 10] = ["OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
+
+#[derive(Clone, Debug)]
+struct Apply {
+    function: Path,
+    generics: Vec<Generic>,
+    literals: Vec<Expr>
+}
+
+#[derive(Clone, Debug)]
+struct Generic {
+    expr: Expr,
+    typ: Type
+}
+
+impl Parse for Apply {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Apply {
+            function: input.parse()?,
+            generics: if input.peek(Token![,]) {
+                let _ = input.parse::<Token![,]>();
+                let generic_punctuated: Punctuated<Generic, Token![,]> = input.parse_terminated(Generic::parse)?;
+                generic_punctuated.iter().cloned().collect()
+            } else {
+                Vec::new()
+            },
+            literals: if input.peek(Token![;]) {
+                let _ = input.parse::<Token![;]>();
+                let expr_punctuated: Punctuated<Expr, Token![,]> = input.parse_terminated(Expr::parse)?;
+                expr_punctuated.into_iter().collect()
+            } else {
+                Vec::new()
+            }
+        })
+    }
+}
+
+impl Parse for Generic {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let expr: Expr = input.parse()?;
+        let _ = input.parse::<Token![=>]>()?;
+        Ok(Generic { expr, typ: input.parse()? })
+    }
+}
+
+fn generate_matcher(apply: Apply, variant_idents: Vec<&str>) -> Expr {
+    let Apply { function, generics, literals } = apply;
+    Expr::Match(ExprMatch {
+        attrs: vec![],
+        match_token: syn::token::Match::default(),
+        expr: Box::new(Expr::Tuple(ExprTuple {
+            attrs: vec![],
+            paren_token: syn::token::Paren::default(),
+            elems: Punctuated::from_iter(generics.iter().map(|v| v.expr.clone()))
+        })),
+        brace_token: syn::token::Brace::default(),
+        arms: variant_idents.iter()
+            .map(|ident_str| Ident::new(ident_str, Span::call_site()))
+            .map(|ident| Arm {
+                attrs: vec![],
+                // one entry per generic argument
+                pat: Pat::Tuple(PatTuple {
+                    attrs: vec![],
+                    paren_token: syn::token::Paren::default(),
+                    // build each term in the tuple
+                    elems: Punctuated::from_iter(generics.iter()
+                        .enumerate().map(|(arg_count, generic)| {
+
+                        let mut path_generic_arg = if let Type::Path(expr_path) = &generic.typ {
+                            expr_path.path.clone()
+                        } else {
+                            panic!("({:?}) must be a path", generic.typ)
+                        };
+                        path_generic_arg.segments.push(PathSegment::from(ident.clone()));
+
+                        Pat::TupleStruct(PatTupleStruct {
+                            attrs: vec![],
+                            // path identifying the variant
+                            path: path_generic_arg,
+                            // variable to match into
+                            pat: PatTuple {
+                                attrs: vec![],
+                                paren_token: syn::token::Paren::default(),
+                                elems: Punctuated::from_iter(vec![Pat::Ident(PatIdent {
+                                    attrs: vec![],
+                                    by_ref: None,
+                                    mutability: None,
+                                    ident: Ident::new(&format!("arg_{}", arg_count), Span::call_site()),
+                                    subpat: None
+                                })])
+                            }
+                        })
+                    })),
+                }),
+                guard: None,
+                fat_arrow_token: syn::token::FatArrow::default(),
+                body: Box::new(Expr::MethodCall(ExprMethodCall {
+                    attrs: vec![],
+                    // 1. call the generic function
+                    receiver: Box::new(Expr::Call(ExprCall {
+                        attrs: vec![],
+                        func: Box::new(Expr::Path(ExprPath {
+                            attrs: vec![],
+                            qself: None,
+                            path: function.clone()
+                        })),
+                        paren_token: syn::token::Paren::default(),
+                        // arguments are a comma-separated punctuated list containing
+                        // 1. expr arguments for each of the generics (verbose Path wrapping necessary)
+                        // 2. expr arguments for each of the auxiliary literals (already exprs)
+                        args: Punctuated::from_iter((0..generics.len())
+                            .map(|arg_count| Expr::Path(ExprPath {
+                                attrs: vec![],
+                                qself: None,
+                                path: Path {
+                                    leading_colon: None,
+                                    segments: Punctuated::from_iter(vec![PathSegment::from(
+                                        Ident::new(&format!("arg_{}", arg_count), Span::call_site()))])
+                                }
+                            }))
+                            .chain(literals.clone().into_iter()))
+                    })),
+                    dot_token: syn::token::Dot::default(),
+                    method: Ident::new("map", Span::call_site()),
+                    turbofish: None,
+                    paren_token: syn::token::Paren::default(),
+                    args: Punctuated::from_iter(vec![Expr::Closure(ExprClosure {
+                        attrs: vec![],
+                        asyncness: None,
+                        movability: None,
+                        capture: None,
+                        or1_token: syn::token::Or::default(),
+                        inputs: Punctuated::from_iter(vec![Pat::Tuple(PatTuple {
+                            attrs: vec![],
+                            paren_token: syn::token::Paren::default(),
+                            elems: Punctuated::from_iter(vec![Pat::Ident(PatIdent {
+                                attrs: vec![],
+                                by_ref: None,
+                                mutability: None,
+                                ident: Ident::new("v", Span::call_site()),
+                                subpat: None
+                            })])
+                        })]),
+                        or2_token: syn::token::Or::default(),
+                        output: ReturnType::Default,
+                        body: Box::new(Expr::MethodCall(ExprMethodCall {
+                            attrs: vec![],
+                            receiver: Box::new(Expr::Path(ExprPath {
+                                attrs: vec![],
+                                qself: None,
+                                path: Path {
+                                    leading_colon: None,
+                                    segments: Punctuated::from_iter(vec![PathSegment::from(
+                                        Ident::new("v", Span::call_site()))])
+                                }
+                            })),
+                            dot_token: syn::token::Dot::default(),
+                            method: Ident::new("into", Span::call_site()),
+                            turbofish: None,
+                            paren_token: syn::token::Paren::default(),
+                            args: Punctuated::new()
+                        }))
+                    })])
+                })),
+                comma: None,
+            })
+            .collect()
+    })
+
+}
+
+macro_rules! generate_apply_macro {
+    ($name:ident, $variants:ident) => {
+        #[proc_macro]
+        pub fn $name(input: TokenStream) -> TokenStream {
+            generate_matcher(parse_macro_input!(input as Apply), $variants.to_vec())
+                .to_token_stream().into()
+        }
+    }
+}
+
+generate_apply_macro!(apply_categorical, CATEGORICAL);
+generate_apply_macro!(apply_option_categorical, OPTION_CATEGORICAL);
+generate_apply_macro!(apply_numeric, NUMERIC);
+generate_apply_macro!(apply_finite_float, FINITE_FLOAT);
+generate_apply_macro!(apply_integer, INTEGER);
+generate_apply_macro!(apply_option_float, OPTION_FLOAT);
+generate_apply_macro!(apply_option_integer, OPTION_INTEGER);
 
 /// Derive an apply macro to accompany an enum.
 /// The macro may be used to apply a generic function over all enum variants.

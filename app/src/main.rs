@@ -9,8 +9,6 @@ use opendp::*;
 use opendp::constructors::aggregate::{make_sum, sensitivity_symmetric};
 use opendp::constructors::chain::make_mt_chain;
 use opendp::constructors::mechanisms::make_base_gaussian;
-use opendp::Error::PrivacyMismatch;
-use noisy_float::prelude::Float;
 
 
 fn test_measurement(meas: Measurement, data: Data, in_dist: DataDistance) -> Result<(), Error> {
@@ -44,7 +42,7 @@ fn example_base_gauss() -> Result<(), Error> {
     let data = Data::Value(Value::Scalar(r64(2.).into()));
     let in_dist = DataDistance::L2Sensitivity(Scalar::from(r64(1.)).to_numeric()?);
 
-    test_measurement(base_gauss, data, in_dist);
+    test_measurement(base_gauss, data, in_dist)?;
 
     Ok(())
 }
