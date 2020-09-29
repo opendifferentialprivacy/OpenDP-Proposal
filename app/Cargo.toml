@@ -6,4 +6,5 @@ edition = "2018"
 
 [dependencies]
 opendp = {path = "../opendp"}
+opendp-derive = {path = "../opendp-derive"}
 noisy_float = "0.1.13"

@@ -1,9 +1,9 @@
 
 use crate::{Transformation, Error};
-use crate::base::domain::{Domain, ScalarDomain};
+use crate::base::domain::{Domain};
 use crate::base::value::*;
 use crate::base::metric::DataDistance;
-use crate::base::Data;
+// use crate::base::Data;
 use crate::base::functions as fun;
 use std::cmp::Ordering;
 use opendp_derive::{apply_numeric};
@@ -21,10 +21,7 @@ use opendp_derive::{apply_numeric};
 //     let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
 //         let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
 //
-//         let lower = lower.to_numeric()?;
-//         let upper = upper.to_numeric()?;
-//
-//         let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
+//         let (prior_lower, prior_upper) = nature.clone().bounds();
 //
 //         let lower: NumericScalar = prior_lower.as_ref()
 //             .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
@@ -56,9 +53,9 @@ use opendp_derive::{apply_numeric};
 
 
 pub fn make_impute_numeric(
-    input_domain: &Domain, lower: NumericScalar, upper: NumericScalar,
+    input_domain: &Domain, lower: Scalar, upper: Scalar,
 ) -> Result<Transformation, Error> {
-    if let Ordering::Greater = apply_numeric_scalar!(fun::cmp, &lower, &upper)? {
+    if let Ordering::Greater = apply_numeric!(fun::cmp, &lower: Scalar, &upper: Scalar)? {
         return Err(Error::Raw("lower may not be greater than upper".to_string()))
     }
 
@@ -73,15 +70,14 @@ pub fn make_impute_numeric(
 
         // if lower bound on the input domain exists, then potentially widen it or return none
         let lower = Some(prior_lower
-            .map(|prior_lower| apply_numeric_scalar!(fun::max, &lower, &prior_lower))
+            .map(|prior_lower| apply_numeric!(fun::max, &lower: Scalar, &prior_lower: Scalar))
             .transpose()?.unwrap_or(lower.clone()));
 
         // if upper bound on the input domain exists, then potentially widen it or return none
         let upper = Some(prior_upper
-            .map(|prior_upper| apply_numeric_scalar!(fun::min, &upper, &prior_upper))
+            .map(|prior_upper| apply_numeric!(fun::min, &upper: Scalar, &prior_upper: Scalar))
             .transpose()?.unwrap_or(upper.clone()));
 
-        apply_numeric!(fun::min, &upper => NumericScalar, &prior_upper => NumericScalar);
         Domain::numeric_scalar(lower, upper, false)
     };
 
@@ -107,7 +103,7 @@ pub fn make_impute_numeric(
 pub mod test_impute_numeric {
     use crate::constructors::preprocess::make_impute_numeric;
     use crate::base::domain::{Domain, VectorDomain};
-    use crate::base::value::NumericScalar;
+    use crate::base::value::Scalar;
 
     #[test]
     fn test_1() {
@@ -119,13 +115,13 @@ pub mod test_impute_numeric {
 
         make_impute_numeric(
             &input_domain,
-            NumericScalar::Int(2u64.into()),
-            NumericScalar::Int(10u64.into())).unwrap();
+            2u64.into(),
+            10u64.into()).unwrap();
 
         if !make_impute_numeric(
             &input_domain,
-            NumericScalar::Int(20u64.into()),
-            NumericScalar::Int(10u64.into())).is_err() {
+            20u64.into(),
+            10u64.into()).is_err() {
             panic!("Impute must fail if bounds are unordered.")
         }
     }

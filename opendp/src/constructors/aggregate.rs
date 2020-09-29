@@ -10,7 +10,9 @@ use crate::base::domain::{Domain, ScalarDomain, VectorDomain};
 use crate::base::functions as fun;
 use crate::base::metric::DataDistance;
 use crate::base::traits::OmniAbs;
-use crate::base::value::*;
+use crate::base::value::{Scalar, Vector, Value};
+use opendp_derive::{apply_numeric};
+
 
 fn mul_constant<T>(l: T, r: usize) -> Result<T, Error>
     where T: Mul<Output=T> + NumCast {
@@ -67,13 +69,13 @@ pub fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
         // derive new lower bound
         match (&lower, length) {
             (Some(lower), Some(length)) =>
-                Some(apply_numeric_scalar!(mul_constant, lower.clone(); *length)?),
+                Some(apply_numeric!(mul_constant, lower.clone(): Scalar; *length)?),
             _ => None
         },
         // derive new upper bound
         match (&upper, length) {
             (Some(upper), Some(length)) =>
-                Some(apply_numeric_scalar!(mul_constant, upper.clone(); *length)?),
+                Some(apply_numeric!(mul_constant, upper.clone(): Scalar; *length)?),
             _ => None
         },
         atomic_type.may_have_nullity
@@ -97,9 +99,17 @@ pub fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
             // check relation depending on input distance type
             match d_in {
                 DataDistance::Symmetric(d_in) =>
-                    apply_numeric_scalar!(relation_symmetric, lower, upper, d_out; d_in),
+                    apply_numeric!(relation_symmetric,
+                        lower: Scalar,
+                        upper: Scalar,
+                        d_out: Scalar;
+                        d_in),
                 DataDistance::Hamming(d_in) =>
-                    apply_numeric_scalar!(relation_hamming, lower, upper, d_out; d_in),
+                    apply_numeric!(relation_hamming,
+                        lower: Scalar,
+                        upper: Scalar,
+                        d_out: Scalar;
+                        d_in),
                 _ => Err(Error::DistanceMismatch)
             }
         }),
@@ -108,9 +118,8 @@ pub fn make_sum(input_domain: Domain) -> Result<Transformation, Error> {
         function: Box::new(move |data: Data| {
             match data {
                 Data::Value(data) =>
-                    apply_numeric_vector!(sum, data.to_vector()?.to_numeric()?)
-                        .map(|v| Data::Value(Value::Scalar(v))),
-                Data::Pointer(_) => unimplemented!()
+                    apply_numeric!(sum, data.to_vector()?: Vector).map(|v| Data::Value(Value::Scalar(v))),
+                _ => unimplemented!()
             }
         })
     })

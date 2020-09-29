@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use indexmap::map::IndexMap;
 
 
-use opendp_derive::{AutoFrom, AutoGet};
+use opendp_derive::{AutoFrom, AutoGet, apply_categorical, apply_numeric};
 
 use crate::base::value::*;
 use crate::Error;
@@ -43,24 +43,26 @@ pub enum Nature {
     Categorical(Categories),
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub struct Categories(CategoricalVector);
+#[derive(Clone, Debug, PartialEq)]
+pub struct Categories(Vector);
 
 impl Categories {
-    pub fn new(values: CategoricalVector) -> Categories {
-        Categories(apply_categorical_vector!(fun::deduplicate, values).unwrap())
+    pub fn new(values: Vector) -> Categories {
+        // TODO: check that the type has equality
+        Categories(apply_categorical!(fun::deduplicate, values: Vector).unwrap())
     }
-    pub fn get(self) -> CategoricalVector { self.0 }
+    pub fn get(self) -> Vector { self.0 }
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Interval(Option<NumericScalar>, Option<NumericScalar>);
+pub struct Interval(Option<Scalar>, Option<Scalar>);
 
 // IMPLEMENTATIONS
 impl Interval {
-    pub fn new(lower: Option<NumericScalar>, upper: Option<NumericScalar>) -> Result<Interval, Error> {
+    pub fn new(lower: Option<Scalar>, upper: Option<Scalar>) -> Result<Interval, Error> {
         if let (Some(l), Some(u)) = (&lower, &upper) {
-            match apply_numeric_scalar!(fun::cmp, l, u)? {
+            // TODO: check is numeric
+            match apply_numeric!(fun::cmp, l: Scalar, u: Scalar)? {
                 None => return Err(crate::Error::AtomicMismatch),
                 Some(Ordering::Greater) => return Err(crate::Error::InvalidDomain),
                 _ => ()
@@ -69,7 +71,7 @@ impl Interval {
         Ok(Interval(lower, upper))
     }
 
-    pub fn bounds(self) -> (Option<NumericScalar>, Option<NumericScalar>) {
+    pub fn bounds(self) -> (Option<Scalar>, Option<Scalar>) {
         (self.0, self.1)
     }
 }
@@ -77,7 +79,7 @@ impl Interval {
 impl Domain {
     // TODO: should we have domain constructors at this fine granularity?
     pub fn numeric_scalar(
-        lower: Option<NumericScalar>, upper: Option<NumericScalar>, may_have_nullity: bool,
+        lower: Option<Scalar>, upper: Option<Scalar>, may_have_nullity: bool,
     ) -> Result<Self, Error> {
         Ok(Domain::Scalar(ScalarDomain {
             may_have_nullity,

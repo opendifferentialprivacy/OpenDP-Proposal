@@ -58,20 +58,20 @@ fn test_basic() {
     println!("Wrapped value: {:?}", value);
     println!("Unwrapped value: {}", value.clone().f64().unwrap());
 
-    let sign_value: Result<NumericScalar, Error> = apply_numeric_scalar!(sign, value; 2.);
+    let sign_value: Result<Scalar, Error> = apply_numeric!(sign, value => Scalar; 2.);
     let sign: i64 = sign_value.unwrap().i64().unwrap();
     println!("sign: {:?}", sign);
 
-    let sum_value: Result<NumericScalar, Error> = apply_numeric_scalar!(add, 1.0.into(), 2.0.into());
+    let sum_value: Result<Scalar, Error> = apply_numeric!(add, 1.0.into() => Scalar, 2.0.into() => Scalar);
     let sum: f64 = sum_value.unwrap().f64().unwrap();
     println!("sum: {:?}", sum);
 
     let a: IntScalar = 1.into();
     let b: IntScalar = 2.into();
-    let checked_sum: Result<IntScalar, Error> = apply_int_scalar!(checked_add, a, b);
+    let checked_sum: Result<Scalar, Error> = apply_integer!(checked_add, a => Scalar, b => Scalar);
     println!("checked sum: {:?}", checked_sum);
 
-    let a: Scalar = IntScalar::from(1).into();
-    let str_casted: String = apply_scalar!(to_string, a).unwrap();
+    let a: Scalar = Scalar::from(1).into();
+    let str_casted: String = apply_any!(to_string, a => Scalar).unwrap();
     println!("casted: {}", str_casted);
 }

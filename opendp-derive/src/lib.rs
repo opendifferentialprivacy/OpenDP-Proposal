@@ -7,7 +7,7 @@ use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use quote::ToTokens;
-use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, ExprTuple, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, PatTuple, Result, Type, TypePath, Variant, PatTupleStruct, PatIdent, ExprMethodCall, ExprCall, ExprPath, ExprClosure, ReturnType};
+use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, ExprTuple, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, PatTuple, Result, Type, TypePath, Variant, PatTupleStruct, PatIdent, ExprMethodCall, ExprCall, ExprPath, ExprClosure, ReturnType, PatWild, ExprType};
 use syn::export::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -22,26 +22,34 @@ const OPTION_FLOAT: [&'static str; 2] = ["F64", "F32"];
 const OPTION_INTEGER: [&'static str; 10] = ["OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
 
 #[derive(Clone, Debug)]
-struct Apply {
+struct ApplySignature {
     function: Path,
-    generics: Vec<Generic>,
+    generics: Vec<ExprType>,
     literals: Vec<Expr>
 }
 
-#[derive(Clone, Debug)]
-struct Generic {
-    expr: Expr,
-    typ: Type
-}
-
-impl Parse for Apply {
+impl Parse for ApplySignature {
     fn parse(input: ParseStream) -> Result<Self> {
-        Ok(Apply {
+        Ok(ApplySignature {
             function: input.parse()?,
             generics: if input.peek(Token![,]) {
                 let _ = input.parse::<Token![,]>();
-                let generic_punctuated: Punctuated<Generic, Token![,]> = input.parse_terminated(Generic::parse)?;
-                generic_punctuated.iter().cloned().collect()
+                let mut generics = Vec::new();
+                loop {
+                    if input.is_empty() || input.peek(Token![;]) {
+                        break;
+                    }
+                    if let Expr::Type(expr_type) = input.parse()? {
+                        generics.push(expr_type)
+                    } else {
+                        panic!("Apply arguments must be expressions with type annotations, as in-- lower: Scalar")
+                    };
+                    if input.is_empty() || input.peek(Token![;]) {
+                        break;
+                    }
+                    let _ = input.parse::<Token![,]>()?;
+                }
+                generics
             } else {
                 Vec::new()
             },
@@ -56,24 +64,20 @@ impl Parse for Apply {
     }
 }
 
-impl Parse for Generic {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let expr: Expr = input.parse()?;
-        let _ = input.parse::<Token![=>]>()?;
-        Ok(Generic { expr, typ: input.parse()? })
-    }
-}
-
-fn generate_matcher(apply: Apply, variant_idents: Vec<&str>) -> Expr {
-    let Apply { function, generics, literals } = apply;
+fn generate_matcher(apply_signature: ApplySignature, variant_idents: Vec<&str>) -> Expr {
+    let ApplySignature { function, generics, literals } = apply_signature;
     Expr::Match(ExprMatch {
         attrs: vec![],
         match_token: syn::token::Match::default(),
-        expr: Box::new(Expr::Tuple(ExprTuple {
-            attrs: vec![],
-            paren_token: syn::token::Paren::default(),
-            elems: Punctuated::from_iter(generics.iter().map(|v| v.expr.clone()))
-        })),
+        expr: match generics.len() {
+            0 => panic!("Apply requires at least one generic argument"),
+            1 => generics[0].clone().expr,
+            _ => Box::new(Expr::Tuple(ExprTuple {
+                attrs: vec![],
+                paren_token: syn::token::Paren::default(),
+                elems: Punctuated::from_iter(generics.iter().map(|v| *v.expr.clone()))
+            }))
+        },
         brace_token: syn::token::Brace::default(),
         arms: variant_idents.iter()
             .map(|ident_str| Ident::new(ident_str, Span::call_site()))
@@ -87,10 +91,10 @@ fn generate_matcher(apply: Apply, variant_idents: Vec<&str>) -> Expr {
                     elems: Punctuated::from_iter(generics.iter()
                         .enumerate().map(|(arg_count, generic)| {
 
-                        let mut path_generic_arg = if let Type::Path(expr_path) = &generic.typ {
+                        let mut path_generic_arg = if let Type::Path(expr_path) = *generic.ty.clone() {
                             expr_path.path.clone()
                         } else {
-                            panic!("({:?}) must be a path", generic.typ)
+                            panic!("({:?}) must be a path", generic.ty)
                         };
                         path_generic_arg.segments.push(PathSegment::from(ident.clone()));
 
@@ -185,6 +189,14 @@ fn generate_matcher(apply: Apply, variant_idents: Vec<&str>) -> Expr {
                 })),
                 comma: None,
             })
+            .chain(vec![Arm {
+                attrs: vec![],
+                pat: Pat::Wild(PatWild { attrs: vec![], underscore_token: syn::token::Underscore::default() }),
+                guard: None,
+                fat_arrow_token: syn::token::FatArrow::default(),
+                body: Box::new(Expr::Verbatim(quote!(Err(Error::AtomicMismatch)))),
+                comma: None
+            }])
             .collect()
     })
 
@@ -194,7 +206,7 @@ macro_rules! generate_apply_macro {
     ($name:ident, $variants:ident) => {
         #[proc_macro]
         pub fn $name(input: TokenStream) -> TokenStream {
-            generate_matcher(parse_macro_input!(input as Apply), $variants.to_vec())
+            generate_matcher(parse_macro_input!(input as ApplySignature), $variants.to_vec())
                 .to_token_stream().into()
         }
     }
