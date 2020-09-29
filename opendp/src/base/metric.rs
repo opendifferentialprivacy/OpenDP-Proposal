@@ -7,6 +7,7 @@ use crate::base::value::{Scalar};
 use opendp_derive::{apply_numeric};
 use crate::Error;
 
+// Ethan: How do you envision this being used?
 trait MathMetric {
     fn is_single_real(&self) -> bool;
     fn has_upper_bound(&self) -> bool;

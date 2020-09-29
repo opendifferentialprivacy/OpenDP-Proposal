@@ -9,7 +9,10 @@ use crate::base::value::*;
 use crate::Error;
 use crate::base::functions as fun;
 
-
+// Ethan: Am I correct in understanding this?
+// 1. Each domain has an atomic type (the type of the data it contains), a length (the number of such
+//    items in the domain, and a bool is_nonempty, which states whether it contains any data.
+// 2. What is the need for is_nonempty? Wouldn't a length of 0 => empty?
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Domain {
     Scalar(ScalarDomain),
@@ -37,12 +40,16 @@ pub struct DataframeDomain {
     pub length: Option<usize>,
 }
 
+// Ethan: I know I asked this in our meeting -
+// is there a particular reason it is called "nature"? Just curious
+// This is essentially giving the valid range / valid values for the domain right?
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Nature {
     Numeric(Interval),
     Categorical(Categories),
 }
 
+// Ethan: What will this be used for?
 #[derive(Clone, Debug, PartialEq)]
 pub struct Categories(Vector);
 

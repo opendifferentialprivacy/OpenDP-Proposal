@@ -11,8 +11,20 @@ use opendp::constructors::mechanisms::make_base_gaussian;
 use opendp_derive::{apply_numeric};
 
 
+// Ethan:
+// 1. If you had to sum up the current functionality, how would you describe it?
+// 2. What remains to be done (i.e. what is the gap in functionality between OpenDP and ____noise),
+//    and what is the highest priority for next steps?
+// 3. We would benefit from thorough documentation and commenting - as of now it can be very
+//    difficult to understand the different pieces, how they fit together, and how to use them. The
+//    tests in this file are very helpful in that regard.
+
+
 fn test_measurement(meas: Measurement, data: Data, in_dist: DataDistance) -> Result<(), Error> {
 
+    // Ethan: The following two lines throw this warning:
+    // "Error:(25, 32) mismatched types [E0308]expected `Scalar`, found
+    // `NoisyFloat<f64, FiniteChecker>`"
     let epsilon = Scalar::from(r64(1.));
     let delta = Scalar::from(r64(0.0001));
     let out_dist = PrivacyDistance::Approximate(epsilon, delta);
