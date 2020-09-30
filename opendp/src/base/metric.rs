@@ -8,6 +8,7 @@ use opendp_derive::{apply_numeric};
 use crate::Error;
 
 // Ethan: How do you envision this being used?
+// Mike: I don't. This is pulled from the framework paper. This bit seems to fit in less and less
 trait MathMetric {
     fn is_single_real(&self) -> bool;
     fn has_upper_bound(&self) -> bool;

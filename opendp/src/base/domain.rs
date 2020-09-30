@@ -13,6 +13,18 @@ use crate::base::functions as fun;
 // 1. Each domain has an atomic type (the type of the data it contains), a length (the number of such
 //    items in the domain, and a bool is_nonempty, which states whether it contains any data.
 // 2. What is the need for is_nonempty? Wouldn't a length of 0 => empty?
+
+// Mike:
+// 1. Pretty much. Dataframes may contain multiple atomic types- one for each column.
+// 2. The separate boolean came from a common situation in Whitenoise where a component
+//        would throw an error at function evaluation when the data was empty,
+//        but the component didn't need to know the number of records.
+//        In this library, we could either
+//         A. keep that property, to prevent construction of a function that may be ill-defined
+//         B. in some cases propagate optional types, if emptiness would cause an error.
+//            Sum- non optional, Mean- optional, Variance- optional, etc.
+//            Mechanisms- take optional or non-optional, and sample from propagated bounds if null?
+// There are other domain descriptors we will need to pull from Whitenoise. These are just the first ones I grabbed.
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Domain {
     Scalar(ScalarDomain),
@@ -43,6 +55,12 @@ pub struct DataframeDomain {
 // Ethan: I know I asked this in our meeting -
 // is there a particular reason it is called "nature"? Just curious
 // This is essentially giving the valid range / valid values for the domain right?
+//
+// Mike: The terminology doesn't matter to me.
+// Variables are occasionally categorized by "nature" but the frequency of that term isn't super high
+// Basically referring to these:
+// https://en.wikipedia.org/wiki/Statistical_data_type
+// Some domain descriptors are only relevant for certain data types
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
 pub enum Nature {
     Numeric(Interval),
@@ -50,6 +68,11 @@ pub enum Nature {
 }
 
 // Ethan: What will this be used for?
+// Mike: You may want to clamp to a predefined set of categories,
+//          and then partition a dataframe or matrix by the categories
+//              (you can't just partition by a non-clamped categorical column, because the dimensionality of a parallel release gives the non-dp count of distinct values)
+//          or count the number of records in each category
+//              (non-stability histograms with public categories)
 #[derive(Clone, Debug, PartialEq)]
 pub struct Categories(Vector);
 

@@ -19,12 +19,19 @@ use opendp_derive::{apply_numeric};
 //    difficult to understand the different pieces, how they fit together, and how to use them. The
 //    tests in this file are very helpful in that regard.
 
+// Mike:
+// 1. Tooling to build components for data pipelines.
+// 2. Components to build data pipelines with.
+//        A. Components
+//            - domain propagation
+//            - relation
+//            - function
+//        B. FFI support
+//        C. Python library
+// 3. I agree, it is necessary for us to add that as the structures become more stable. I think it's time?
 
 fn test_measurement(meas: Measurement, data: Data, in_dist: DataDistance) -> Result<(), Error> {
 
-    // Ethan: The following two lines throw this warning:
-    // "Error:(25, 32) mismatched types [E0308]expected `Scalar`, found
-    // `NoisyFloat<f64, FiniteChecker>`"
     let epsilon = Scalar::from(r64(1.));
     let delta = Scalar::from(r64(0.0001));
     let out_dist = PrivacyDistance::Approximate(epsilon, delta);
