@@ -220,6 +220,18 @@ generate_apply_macro!(apply_integer, INTEGER);
 generate_apply_macro!(apply_option_float, OPTION_FLOAT);
 generate_apply_macro!(apply_option_integer, OPTION_INTEGER);
 
+/// retrieve the only type contained in a length-one tuple variant
+fn get_ty_singleton(variant: &Variant) -> &Type {
+    if let Fields::Unnamed(FieldsUnnamed { unnamed: ref fields, .. }) = variant.fields {
+        if fields.len() != 1 {
+            panic!("Variants must be tuples of length one")
+        }
+        &fields.first().unwrap().ty
+    } else {
+        panic!("Variants must be tuples")
+    }
+}
+
 // derive From implementations for the annotated enum
 #[proc_macro_derive(AutoFrom)]
 pub fn auto_from(input: TokenStream) -> TokenStream {
