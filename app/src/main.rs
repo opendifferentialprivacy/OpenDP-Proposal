@@ -4,12 +4,12 @@ use opendp::{Error, Measurement};
 use opendp::base::Data;
 use opendp::base::domain::{Domain, Interval, Nature, ScalarDomain, VectorDomain};
 use opendp::base::metric::{DataDistance, PrivacyDistance};
-use opendp::base::value::*;
+use opendp::base::value::{Value, Scalar};
 use opendp::constructors::aggregate::{make_sum, sensitivity_symmetric};
 use opendp::constructors::chain::make_mt_chain;
 use opendp::constructors::mechanisms::make_base_gaussian;
-use opendp_derive::{apply_numeric};
 
+use opendp_derive::apply_numeric;
 
 // Ethan:
 // 1. If you had to sum up the current functionality, how would you describe it?

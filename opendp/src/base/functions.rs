@@ -5,6 +5,8 @@ use std::hash::Hash;
 use itertools::Itertools;
 use std::cmp::Ordering;
 
+pub(crate) fn tautology<T>(_: &T) -> Result<(), Error> {Ok(())}
+
 macro_rules! define_generic {
     ($trait_name:ident, $trait_fun:ident, $error:expr) => {
         pub(crate) fn $trait_fun<T: $trait_name<Output=T>>(l: T, r: T) -> Result<T, Error> {

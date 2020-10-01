@@ -14,12 +14,13 @@ use syn::punctuated::Punctuated;
 use syn::Token;
 
 const CATEGORICAL: [&'static str; 14] = ["String", "Bool", "R64", "R32", "I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
-const OPTION_CATEGORICAL: [&'static str; 14] = ["OptionString", "OptionBool", "OptionR64", "OptionR32", "OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
+const OPTION_CATEGORICAL: [&'static str; 14] = ["OptionString", "OptionBool", "R64", "R32", "OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
 const NUMERIC: [&'static str; 12] = ["R64", "R32", "I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
 const FINITE_FLOAT: [&'static str; 2] = ["R64", "R32"];
 const INTEGER: [&'static str; 10] = ["I128", "I64", "I32", "I16", "I8", "U128", "U64", "U32", "U16", "U8"];
 const OPTION_FLOAT: [&'static str; 2] = ["F64", "F32"];
 const OPTION_INTEGER: [&'static str; 10] = ["OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8"];
+const OPTION_NUMERIC: [&'static str; 12] = ["OptionI128", "OptionI64", "OptionI32", "OptionI16", "OptionI8", "OptionU128", "OptionU64", "OptionU32", "OptionU16", "OptionU8", "f64", "f32"];
 
 #[derive(Clone, Debug)]
 struct ApplySignature {
@@ -219,6 +220,7 @@ generate_apply_macro!(apply_finite_float, FINITE_FLOAT);
 generate_apply_macro!(apply_integer, INTEGER);
 generate_apply_macro!(apply_option_float, OPTION_FLOAT);
 generate_apply_macro!(apply_option_integer, OPTION_INTEGER);
+generate_apply_macro!(apply_option_numeric, OPTION_NUMERIC);
 
 /// retrieve the only type contained in a length-one tuple variant
 fn get_ty_singleton(variant: &Variant) -> &Type {
@@ -270,7 +272,7 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
 /// enum MyEnum {A(bool)}
 /// fn main() {
 ///     let test_instance = MyEnum::A(true);
-///     assert!(test_instance.a().unwrap())
+///     assert!(test_instance.to_a().unwrap())
 /// }
 /// ```
 #[proc_macro_derive(AutoGet)]
