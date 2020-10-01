@@ -10,6 +10,9 @@ use opendp::constructors::chain::make_mt_chain;
 use opendp::constructors::mechanisms::make_base_gaussian;
 
 use opendp_derive::apply_numeric;
+use std::cmp::Ordering;
+use std::mem::{discriminant, Discriminant};
+use std::any::Any;
 
 // Ethan:
 // 1. If you had to sum up the current functionality, how would you describe it?
@@ -99,7 +102,52 @@ fn example_sum() -> Result<(), Error> {
     Ok(())
 }
 
+enum Scalar2 {
+    F64(f64),
+    I64(i64)
+}
+
+enum TransVariants {
+    F64_F64,
+    I64_I64
+}
+
+struct Transformation<T, U> {
+    function: Box<dyn Fn(T) -> U>
+}
+
+fn make_clamp<T: PartialOrd>() -> Transformation<T, T> {
+    Transformation {
+        function: Box::new(move |v: T| v)
+    }
+}
+
+trait FFIObject {
+    fn as_any(&self) -> &dyn Any;
+}
+impl FFIObject for Transformation<f64, f64> {
+    fn as_any(&self) -> &dyn Any { self }
+}
+impl FFIObject for Transformation<i64, i64> {
+    fn as_any(&self) -> &dyn Any { self }
+}
+
 fn main() {
-    example_base_gauss().unwrap();
-    example_sum().unwrap();
+    // example_base_gauss().unwrap();
+    // example_sum().unwrap();
+
+    let scalar = Scalar2::F64(2.0);
+    let (discrim, boxed) = match scalar {
+        Scalar2::F64(_v) => (TransVariants::F64_F64, Box::new(make_clamp::<f64>()) as Box<dyn FFIObject>),
+        Scalar2::I64(_v) => (TransVariants::I64_I64, Box::new(make_clamp::<i64>()) as Box<dyn FFIObject>),
+    };
+
+    match discrim {
+        TransVariants::F64_F64 => {
+            boxed.as_any().downcast_ref::<Transformation<f64, f64>>();
+        }
+        TransVariants::I64_I64 => {
+            boxed.as_any().downcast_ref::<Transformation<i64, i64>>();
+        }
+    }
 }

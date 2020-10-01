@@ -14,6 +14,7 @@ pub enum Value {
 }
 
 #[derive(Clone, Debug)]
+// TODO: Value -> Vector
 pub struct Dataframe(pub IndexMap<String, Value>);
 // pub struct Partition(pub Vec<Value>);
 

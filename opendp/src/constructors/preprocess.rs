@@ -50,7 +50,13 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
         output_domain,
         stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
         function: Box::new(move |data: Data| match data {
-            Data::Value(data) => Ok(Data::Value(Value::Vector(apply_numeric!(clamp_vec, data.to_vector()?: Vector, lower.clone(): Scalar, upper.clone(): Scalar)?))),
+            Data::Value(data) => {
+                let out = apply_numeric!(clamp_vec,
+                    data.to_vector()?: Vector,
+                    lower.clone(): Scalar,
+                    upper.clone(): Scalar)?;
+                Ok(Data::Value(Value::Vector(out)))
+            },
             _ => Err(Error::NotImplemented)
         })
     })
