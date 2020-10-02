@@ -1,4 +1,4 @@
-use noisy_float::types::{R32, R64, r64, r32};
+use noisy_float::types::{R32, R64}; // , r64, r32
 use num::Float;
 
 macro_rules! impl_trait_through_method {

@@ -1,6 +1,8 @@
 *.iml
 .idea/
 
+out/
+
 /opendp-derive/target
 /opendp-derive/Cargo.lock
 

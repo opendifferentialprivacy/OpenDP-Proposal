@@ -108,8 +108,8 @@ enum Scalar2 {
 }
 
 enum TransVariants {
-    F64_F64,
-    I64_I64
+    F64_F64 = 1,
+    I64_I64 = 2
 }
 
 struct Transformation<T, U> {

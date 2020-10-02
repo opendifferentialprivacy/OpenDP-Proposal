@@ -10,7 +10,7 @@ use crate::base::metric::{DataDistance, PrivacyDistance};
 #[macro_use]
 pub mod base;
 pub mod constructors;
-// pub mod ffi;
+pub mod ffi;
 
 
 
