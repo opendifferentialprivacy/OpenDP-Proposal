@@ -1,0 +1,12 @@
+[package]
+name = "ffi_probe"
+version = "0.1.0"
+authors = ["Andrew Vyrros <6577271+andrewvyrros@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
