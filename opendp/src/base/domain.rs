@@ -1,13 +1,9 @@
-use std::cmp::Ordering;
 
-use indexmap::map::IndexMap;
-
-
-use opendp_derive::{AutoFrom, AutoGet, apply_categorical, apply_numeric};
-
-use crate::base::value::*;
 use crate::Error;
 use crate::base::functions as fun;
+use opendp_derive::{AutoFrom, AutoGet};
+use std::marker::PhantomData;
+use std::any::Any;
 
 // Ethan: Am I correct in understanding this?
 // 1. Each domain has an atomic type (the type of the data it contains), a length (the number of such
@@ -25,32 +21,31 @@ use crate::base::functions as fun;
 //            Sum- non optional, Mean- optional, Variance- optional, etc.
 //            Mechanisms- take optional or non-optional, and sample from propagated bounds if null?
 // There are other domain descriptors we will need to pull from Whitenoise. These are just the first ones I grabbed.
-#[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
-pub enum Domain {
-    Scalar(ScalarDomain),
-    Vector(VectorDomain),
-    Dataframe(DataframeDomain),
+pub trait Domain<T> {
+    fn as_any(&self) -> &dyn Any;
+    fn is_same(&self, other: Box<dyn Domain<T>>) -> bool;
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct ScalarDomain {
+pub struct ScalarDomain<T> {
     pub may_have_nullity: bool,
-    pub nature: Nature,
+    pub nature: Nature<T>
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct VectorDomain {
-    pub atomic_type: Box<Domain>,
+pub struct VectorDomain<C, T> {
+    pub atomic_type: Box<dyn Domain<T>>,
     pub is_nonempty: bool,
     pub length: Option<usize>,
+    pub container: PhantomData<C>
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct DataframeDomain {
-    pub columns: IndexMap<String, Domain>,
-    pub is_nonempty: bool,
-    pub length: Option<usize>,
-}
+// #[derive(PartialEq, Clone, Debug)]
+// pub struct DataframeDomain {
+//     pub columns: IndexMap<String, Domain>,
+//     pub is_nonempty: bool,
+//     pub length: Option<usize>,
+// }
 
 // Ethan: I know I asked this in our meeting -
 // is there a particular reason it is called "nature"? Just curious
@@ -62,9 +57,9 @@ pub struct DataframeDomain {
 // https://en.wikipedia.org/wiki/Statistical_data_type
 // Some domain descriptors are only relevant for certain data types
 #[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
-pub enum Nature {
-    Numeric(Interval),
-    Categorical(Categories),
+pub enum Nature<T> {
+    Numeric(Interval<T>),
+    Categorical(Categories<T>),
 }
 
 // Ethan: What will this be used for?
@@ -74,69 +69,46 @@ pub enum Nature {
 //          or count the number of records in each category
 //              (non-stability histograms with public categories)
 #[derive(Clone, Debug, PartialEq)]
-pub struct Categories(Vector);
+pub struct Categories<T>(Vec<T>);
 
-impl Categories {
-    pub fn new(values: Vector) -> Categories {
+impl<T: Eq> Categories<T> {
+    pub fn new(values: Vec<T>) -> Categories<T> {
         // TODO: check that the type has equality
-        Categories(apply_categorical!(fun::deduplicate, values: Vector).unwrap())
+        Categories(fun::deduplicate(values).unwrap())
     }
-    pub fn get(self) -> Vector { self.0 }
+    pub fn get(self) -> Vec<T> { self.0 }
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Interval(Option<Scalar>, Option<Scalar>);
+pub struct Interval<T>(Option<T>, Option<T>);
 
 // IMPLEMENTATIONS
-impl Interval {
-    pub fn new(lower: Option<Scalar>, upper: Option<Scalar>) -> Result<Interval, Error> {
+impl<T: PartialOrd> Interval<T> {
+    pub fn new(
+        lower: Option<T>, upper: Option<T>
+    ) -> Result<Interval<T>, Error> {
+
         if let (Some(l), Some(u)) = (&lower, &upper) {
-            // TODO: check is numeric
-            match apply_numeric!(fun::cmp, l: Scalar, u: Scalar)? {
-                None => return Err(crate::Error::AtomicMismatch),
-                Some(Ordering::Greater) => return Err(crate::Error::InvalidDomain),
-                _ => ()
-            }
+            if l > u { return Err(crate::Error::InvalidDomain) }
         }
         Ok(Interval(lower, upper))
     }
 
-    pub fn bounds(self) -> (Option<Scalar>, Option<Scalar>) {
+    pub fn bounds(self) -> (Option<T>, Option<T>) {
         (self.0, self.1)
     }
 }
 
-impl Domain {
-    // TODO: should we have domain constructors at this fine granularity?
-    pub fn numeric_scalar(
-        lower: Option<Scalar>, upper: Option<Scalar>, may_have_nullity: bool,
-    ) -> Result<Self, Error> {
-        Ok(Domain::Scalar(ScalarDomain {
-            may_have_nullity,
-            nature: Nature::Numeric(Interval::new(lower, upper)?),
-        }))
-    }
+// impl DataframeDomain {
+//     pub fn assert_non_null(&self) -> Result<(), Error> {
+//         for atomic_type in self.columns.values() {
+//             atomic_type.assert_non_null()?
+//         }
+//         Ok(())
+//     }
+// }
 
-    pub fn assert_non_null(&self) -> Result<(), Error> {
-        Ok(match self {
-            Domain::Scalar(domain) => domain.assert_non_null()?,
-            Domain::Vector(domain) => domain.atomic_type.assert_non_null()?,
-            Domain::Dataframe(domain) => domain.assert_non_null()?,
-        })
-    }
-}
-
-
-impl DataframeDomain {
-    pub fn assert_non_null(&self) -> Result<(), Error> {
-        for atomic_type in self.columns.values() {
-            atomic_type.assert_non_null()?
-        }
-        Ok(())
-    }
-}
-
-impl ScalarDomain {
+impl<T> ScalarDomain<T> {
     pub fn assert_non_null(&self) -> Result<(), Error> {
         if self.may_have_nullity {
             Err(Error::PotentialNullity)

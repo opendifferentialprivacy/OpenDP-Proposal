@@ -9,11 +9,11 @@ pub mod aggregate;
 pub mod mechanisms;
 
 
-pub fn make_row_transform(
-    input_domain: Domain,
-    output_domain: Domain,
-    function: Box<dyn Fn(Data) -> Result<Data, Error>>,
-) -> Transformation {
+pub fn make_row_transform<T, U>(
+    input_domain: Domain<T>,
+    output_domain: Domain<T>,
+    function: Box<dyn Fn(Data<T>) -> Result<Data<U>, Error>>,
+) -> Transformation<T, U> {
     Transformation {
         input_domain,
         output_domain,

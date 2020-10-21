@@ -7,7 +7,7 @@ use heck::SnakeCase;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use quote::ToTokens;
-use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprMatch, ExprTuple, Fields, FieldsUnnamed, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathSegment, PatTuple, Result, Type, TypePath, Variant, PatTupleStruct, PatIdent, ExprMethodCall, ExprCall, ExprPath, ExprClosure, ReturnType, PatWild, ExprType};
+use syn::{Arm, Data, DataEnum, DeriveInput, Expr, ExprCall, ExprClosure, ExprMatch, ExprMethodCall, ExprPath, ExprTuple, ExprType, Fields, FieldsUnnamed, FnArg, GenericArgument, GenericParam, Generics, ImplItem, ItemImpl, parse_macro_input, Pat, Path, PathArguments, PathSegment, PatIdent, PatTuple, PatTupleStruct, PatWild, Receiver, Result, ReturnType, Signature, Type, TypeParam, TypePath, Variant, AngleBracketedGenericArguments};
 use syn::export::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -234,6 +234,22 @@ fn get_ty_singleton(variant: &Variant) -> &Type {
     }
 }
 
+fn get_ty_args(ty_variant: &Type) -> Option<Punctuated<GenericParam, syn::Token![,]>> {
+    if let Type::Path(ty_path) = ty_variant {
+        let path_args = ty_path.path.segments.iter().last().unwrap().clone().arguments;
+        if let PathArguments::AngleBracketed(ty_params) = path_args {
+            Some(ty_params.args.iter().map(|arg| GenericParam::Type(TypeParam {
+                attrs: vec![],
+                ident: if let GenericArgument::Type(Type::Path(arg)) = arg { arg.path.segments.last().unwrap().clone().ident } else { unreachable!() },
+                colon_token: None,
+                bounds: Punctuated::new(),
+                eq_token: None,
+                default: None,
+            })).collect::<Punctuated<_, _>>())
+        } else { None }
+    } else { None }
+}
+
 // derive From implementations for the annotated enum
 #[proc_macro_derive(AutoFrom)]
 pub fn auto_from(input: TokenStream) -> TokenStream {
@@ -246,19 +262,42 @@ pub fn auto_from(input: TokenStream) -> TokenStream {
     output.extend(variants.iter().map(|variant| {
         let ident_variant = &variant.ident;
         let ty_variant = get_ty_singleton(variant);
-
-        TokenStream::from(quote!{
-            impl From<#ty_variant> for #ident_enum {
+        TokenStream::from(ItemImpl {
+            attrs: vec![],
+            defaultness: None,
+            unsafety: None,
+            impl_token: syn::token::Impl::default(),
+            generics: match get_ty_args(ty_variant) {
+                Some(ty_args) => Generics {
+                    lt_token: Some(syn::token::Lt::default()),
+                    params: ty_args,
+                    gt_token: Some(syn::token::Gt::default()),
+                    where_clause: None
+                },
+                None => Generics {
+                    lt_token: None,
+                    params: Punctuated::new(),
+                    gt_token: None,
+                    where_clause: None
+                }
+            },
+            trait_: Some((None, Path::from(PathSegment {
+                ident: syn::Ident::new("From", Span::call_site()),
+                arguments: PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+                    colon2_token: None,
+                    lt_token: syn::token::Lt::default(),
+                    args: Punctuated::from_iter(vec![GenericArgument::Type(ty_variant.clone())]),
+                    gt_token: syn::token::Gt::default()
+                })
+            }), syn::token::For::default())),
+            self_ty: Box::new(Type::Verbatim(quote!(#ident_enum))),
+            brace_token: syn::token::Brace::default(),
+            items: vec![ImplItem::Verbatim(quote! {
                 fn from(v: #ty_variant) -> Self {
                     #ident_enum::#ident_variant(v)
                 }
-            }
-            impl From<&#ty_variant> for #ident_enum {
-                fn from(v: &#ty_variant) -> Self {
-                    #ident_enum::#ident_variant(v.clone())
-                }
-            }
-        })
+            })]
+        }.to_token_stream())
     }));
 
     output
@@ -298,18 +337,57 @@ pub fn auto_get(input: TokenStream) -> TokenStream {
         items: variants.iter().map(|variant| {
             let ident_variant = &variant.ident;
             let ty_variant = get_ty_singleton(variant);
-            let ident_as_getter = Ident::new(
-                &format!("as_{}", ident_variant.to_string().to_snake_case()), Span::call_site());
-            let ident_to_getter = Ident::new(
-                &format!("to_{}", ident_variant.to_string().to_snake_case()), Span::call_site());
+            let ty_args = get_ty_args(ty_variant);
+
+            let make_signature = |ident, self_ref, output| Signature {
+                constness: None,
+                asyncness: None,
+                unsafety: None,
+                abi: None,
+                fn_token: syn::token::Fn::default(),
+                ident,
+                generics: match ty_args.clone() {
+                    Some(ty_args) => Generics {
+                        lt_token: Some(syn::token::Lt::default()),
+                        params: ty_args,
+                        gt_token: Some(syn::token::Gt::default()),
+                        where_clause: None,
+                    },
+                    None => Generics {
+                        lt_token: None,
+                        params: Punctuated::new(),
+                        gt_token: None,
+                        where_clause: None,
+                    }
+                },
+                paren_token: syn::token::Paren::default(),
+                inputs: Punctuated::from_iter(vec![FnArg::Receiver(Receiver {
+                    attrs: vec![],
+                    reference: self_ref,
+                    mutability: None,
+                    self_token: syn::token::SelfValue::default(),
+                })]),
+                variadic: None,
+                output: ReturnType::Type(syn::token::RArrow::default(), Box::new(output)),
+            };
+
+            let signature_as = make_signature(
+                Ident::new(&format!("as_{}", ident_variant.to_string().to_snake_case()), Span::call_site()),
+                Some((syn::token::And::default(), None)),
+                Type::Verbatim(quote!(Result<&#ty_variant, Error>)));
+
+            let signature_to = make_signature(
+                Ident::new(&format!("to_{}", ident_variant.to_string().to_snake_case()), Span::call_site()),
+                None,
+                Type::Verbatim(quote!(Result<#ty_variant, Error>)));
 
             ImplItem::Verbatim(TokenStream2::from(quote! {
-                pub fn #ident_as_getter(&self) -> Result<&#ty_variant, Error> {
+                pub #signature_as {
                     if let #ident_enum::#ident_variant(v) = self {
                         Ok(v)
                     } else { Err(Error::AtomicMismatch) }
                 }
-                pub fn #ident_to_getter(self) -> Result<#ty_variant, Error> {
+                pub #signature_to {
                     if let #ident_enum::#ident_variant(v) = self {
                         Ok(v)
                     } else { Err(Error::AtomicMismatch) }

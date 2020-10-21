@@ -1,5 +1,5 @@
-use crate::base::domain::Domain;
-use crate::base::value::{Scalar, Value};
+use crate::base::domain::{Domain, ScalarDomain};
+use crate::base::value::{Scalar};
 use crate::{Error, Measurement};
 use crate::base::metric::{PrivacyDistance, DataDistance};
 use num::{NumCast, ToPrimitive};
@@ -14,12 +14,12 @@ fn to_f64<T: NumCast + Clone>(v: T) -> Result<f64, Error> {
 }
 
 fn relation_gaussian_mechanism<T: PartialOrd + NumCast>(
-    sensitivity: T, sigma: T, epsilon: f64, delta: f64
+    sensitivity: T, sigma: T, epsilon: &f64, delta: &f64
 ) -> Result<bool, Error> {
     let sensitivity: f64 = cast::<T, f64>(sensitivity).ok_or_else(|| Error::UnsupportedCast)?;
     let sigma: f64 = cast::<T, f64>(sigma).ok_or_else(|| Error::UnsupportedCast)?;
 
-    if delta < 0. {
+    if delta < &0. {
         return Err(Error::Raw("delta may not be less than zero".to_string()))
     }
     Ok(epsilon.min(1.) >= (sensitivity / sigma) * ((1.25 / delta).ln() * 2.).sqrt())
@@ -42,13 +42,13 @@ fn sample_gaussian(_sigma: f64) -> f64 {
 }
 
 
-pub fn make_base_gaussian(
-    input_domain: Domain, sigma: Scalar
-) -> Result<Measurement, Error> {
+pub fn make_base_gaussian<T>(
+    input_domain: &dyn Domain<T>, sigma: T
+) -> Result<Measurement<T>, Error> {
 
     let sigma_2 = sigma.clone();
 
-    if let Domain::Scalar(domain) = input_domain.clone() {
+    if let Some(domain) = input_domain.as_any().downcast_ref::<ScalarDomain<T>>() {
 
         if domain.may_have_nullity {
             return Err(Error::PotentialNullity)
@@ -71,27 +71,27 @@ pub fn make_base_gaussian(
             };
 
             match out_dist {
-                PrivacyDistance::Approximate(epsilon, delta) => {
-                    let epsilon: f64 = apply_numeric!(to_f64, epsilon.clone(): Scalar)?;
-                    let delta: f64 = apply_numeric!(to_f64, delta.clone(): Scalar)?;
-
-                    apply_numeric!(relation_gaussian_mechanism,
-                        in_dist.clone(): Scalar, sigma.clone(): Scalar; epsilon, delta)
-                },
+                PrivacyDistance::Approximate(epsilon, delta) =>
+                    relation_gaussian_mechanism(in_dist.clone(), sigma.clone(), epsilon, delta),
                 _ => Err(Error::NotImplemented)
             }
         }),
-        // issue: how to differentiate between calls out to different execution environments
-        function: Box::new(move |data: Data| match data {
+        function: Box::new(move |data: Data<T>| match data {
             Data::Value(value) => {
-                let value: f64 = value.to_scalar()?.to_r64()?
+                let value: f64 = value
                     .to_f64().ok_or_else(|| Error::AtomicMismatch)?;
                 let sigma: f64 = apply_numeric!(to_f64, sigma_2.clone(): Scalar)?;
                 let release: f64 = gaussian_mechanism(value, sigma)?;
 
-                Ok(Data::Value(Value::Scalar(Scalar::from(release))))
+                Ok(Data::Value(release))
             },
             _ => Err(Error::NotImplemented)
         })
     })
+}
+
+trait Operation {
+    type Item;
+
+    fn function<O>(input: Self::Item) -> O;
 }

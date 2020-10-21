@@ -1,12 +1,12 @@
 
 use crate::{Transformation, Error};
-use crate::base::domain::{Domain, ScalarDomain};
+use crate::base::domain::{Domain, ScalarDomain, Interval, Nature, VectorDomain};
 use crate::base::value::*;
 use crate::base::metric::DataDistance;
 // use crate::base::Data;
 use crate::base::{functions as fun, Data};
 use std::cmp::Ordering;
-use opendp_derive::{apply_numeric, apply_option_integer, apply_integer};
+use opendp_derive::{apply_numeric, apply_option_integer};
 use std::ops::{Div, Add};
 use num::NumCast;
 use num::cast;
@@ -19,22 +19,26 @@ fn clamp_vec<T: PartialOrd + Clone>(v: Vec<T>, l: T, u: T) -> Result<Vec<T>, Err
     v.into_iter().map(|v| clamp(v, l.clone(), u.clone())).collect()
 }
 
-pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) -> Result<Transformation, Error> {
+pub fn make_clamp_numeric<T>(input_domain: &dyn Domain<T>, lower: T, upper: T) -> Result<Transformation<Vec<T>, Vec<T>>, Error> {
 
-    let clamp_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
+    let clamp_atomic_domain = |atomic_type: &dyn Domain<T>| -> Result<dyn Domain<T>, Error> {
+        if let Some()
         let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
 
         let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
 
         let lower: Scalar = prior_lower.as_ref()
-            .map(|prior_lower| apply_numeric!(fun::max, &lower: Scalar, &prior_lower: Scalar))
+            .map(|prior_lower| fun::max(&lower, &prior_lower))
             .transpose()?.unwrap_or(lower.clone());
 
         let upper: Scalar = prior_upper.as_ref()
-            .map(|prior_upper| apply_numeric!(fun::min, &upper: Scalar, &prior_upper: Scalar))
+            .map(|prior_upper| fun::min(&upper, &prior_upper))
             .transpose()?.unwrap_or(upper.clone());
 
-        Domain::numeric_scalar(Some(lower), Some(upper), *may_have_nullity)
+        Ok(Box::new(ScalarDomain {
+            may_have_nullity: *may_have_nullity,
+            nature: Nature::Numeric(Interval::new(Some(lower), Some(upper))?)
+        }) as _)
     };
 
     let output_domain = match input_domain.clone() {
@@ -46,16 +50,12 @@ pub fn make_clamp_numeric(input_domain: Domain, lower: Scalar, upper: Scalar) ->
     };
 
     Ok(Transformation {
-        input_domain,
+        input_domain: Box::new(input_domain),
         output_domain,
         stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
-        function: Box::new(move |data: Data| match data {
+        function: Box::new(move |data: Data<Vec<T>>| match data {
             Data::Value(data) => {
-                let out = apply_numeric!(clamp_vec,
-                    data.to_vector()?: Vector,
-                    lower.clone(): Scalar,
-                    upper.clone(): Scalar)?;
-                Ok(Data::Value(Value::Vector(out)))
+                Ok(Data::Value(clamp_vec(data, lower.clone(), upper.clone())?))
             },
             _ => Err(Error::NotImplemented)
         })
@@ -72,20 +72,15 @@ fn impute_int_vec<T: Div<Output=T> + Add<Output=T> + NumCast + Clone>(
     Ok(v.into_iter().map(|v| v.unwrap_or((l.clone() + u.clone()) / two.clone())).collect())
 }
 
-pub fn make_impute_integer(
-    input_domain: &Domain, lower: Scalar, upper: Scalar,
-) -> Result<Transformation, Error> {
-    if let Ordering::Greater = apply_integer!(fun::cmp, &lower: Scalar, &upper: Scalar)? {
+pub fn make_impute_integer<T: Clone + PartialOrd>(
+    input_domain: &dyn Domain<T>, lower: T, upper: T,
+) -> Result<Transformation<Vec<T>, Vec<T>>, Error> {
+    if lower > upper {
         return Err(Error::Raw("lower may not be greater than upper".to_string()))
     }
 
-    // check that lower and upper bounds are non-null integers and preprocess for imputation
-    // attention: this is tricky
-    let lower_wrap: Scalar = apply_integer!(wrap_option, lower.clone(): Scalar)?;
-    let upper_wrap: Scalar = apply_integer!(wrap_option, lower.clone(): Scalar)?;
-
     // function that applies impute transformation to atomic type
-    let impute_atomic_domain = |atomic_type: &Domain| -> Result<Domain, Error> {
+    let impute_atomic_domain = |atomic_type: &dyn Domain<T>| -> Result<Box<dyn Domain<T>>, Error> {
 
         // atomic type must be a scalar
         let nature = atomic_type.as_scalar()?.clone().nature;
@@ -95,7 +90,7 @@ pub fn make_impute_integer(
 
         // if lower bound on the input domain exists, then potentially widen it or return none
         let lower = Some(prior_lower
-            .map(|prior_lower| apply_numeric!(fun::max, &lower: Scalar, &prior_lower: Scalar))
+            .map(|prior_lower| fun::max(&lower, &prior_lower))
             .transpose()?.unwrap_or(lower.clone()));
 
         // if upper bound on the input domain exists, then potentially widen it or return none
@@ -103,60 +98,57 @@ pub fn make_impute_integer(
             .map(|prior_upper| apply_numeric!(fun::min, &upper: Scalar, &prior_upper: Scalar))
             .transpose()?.unwrap_or(upper.clone()));
 
-        Domain::numeric_scalar(lower, upper, false)
+        Ok(Box::new(ScalarDomain {
+            may_have_nullity: false,
+            nature: Nature::Numeric(Interval::new(lower, upper)?)
+        }) as _)
     };
 
-    let output_domain = match input_domain.clone() {
-        // if input domain is a vector
-        Domain::Vector(mut domain) => {
-            // apply imputation transformation to the atomic domain
-            domain.atomic_type = Box::new(impute_atomic_domain(domain.atomic_type.as_ref())?);
-            Domain::Vector(domain)
-        }
-        _ => return Err(crate::Error::InvalidDomain)
-    };
+
+    let output_domain = if let Some(mut domain) = input_domain.as_any()
+        .downcast_ref::<VectorDomain<Vec<T>, T>>() {
+
+        // apply imputation transformation to the atomic domain
+        domain.atomic_type = impute_atomic_domain(domain.atomic_type)?;
+        Box::new(domain) as Box<dyn Domain<T>>
+    } else { return Err(crate::Error::InvalidDomain) };
+
 
     Ok(Transformation {
-        input_domain: input_domain.clone(),
-        output_domain,
+        input_domain: Box::new(input_domain),
+        output_domain: Box::new(output_domain) as Box<dyn Domain<Vec<T>>>,
         stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| Ok(d_in <= d_out)),
-        function: Box::new(move |data: Data| match data {
-            Data::Value(data) => {
-                let out = apply_option_integer!(impute_int_vec,
-                    data.to_vector()?: Vector,
-                    lower_wrap.clone(): Scalar,
-                    upper_wrap.clone(): Scalar)?;
-                Ok(Data::Value(Value::Vector(out)))
-            },
+        function: Box::new(move |data: Data<T>| match data {
+            Data::Value(data) => Ok(Data::Value(impute_int_vec(data.to_vector()?,lower_wrap.clone(), upper_wrap.clone())?)),
             _ => Err(Error::NotImplemented)
         })
     })
 }
 
-#[cfg(test)]
-pub mod test_impute_numeric {
-    use crate::constructors::preprocess::make_impute_integer;
-    use crate::base::domain::{Domain, VectorDomain};
-    use crate::base::value::Scalar;
-
-    #[test]
-    fn test_1() {
-        let input_domain = Domain::Vector(VectorDomain {
-            atomic_type: Box::new(Domain::numeric_scalar(None, None, true).unwrap()),
-            is_nonempty: false,
-            length: None,
-        });
-
-        make_impute_integer(
-            &input_domain,
-            2.into(),
-            10.into()).unwrap();
-
-        if !make_impute_integer(
-            &input_domain,
-            20.into(),
-            10.into()).is_err() {
-            panic!("Impute must fail if bounds are unordered.")
-        }
-    }
+// #[cfg(test)]
+// pub mod test_impute_numeric {
+//     use crate::constructors::preprocess::make_impute_integer;
+//     use crate::base::domain::{Domain, VectorDomain};
+//     use crate::base::value::Scalar;
+//
+//     #[test]
+//     fn test_1() {
+//         let input_domain = Domain::Vector(VectorDomain {
+//             atomic_type: Box::new(Domain::numeric_scalar(None, None, true).unwrap()),
+//             is_nonempty: false,
+//             length: None,
+//         });
+//
+//         make_impute_integer(
+//             &input_domain,
+//             2.into(),
+//             10.into()).unwrap();
+//
+//         if !make_impute_integer(
+//             &input_domain,
+//             20.into(),
+//             10.into()).is_err() {
+//             panic!("Impute must fail if bounds are unordered.")
+//         }
+//     }
 }

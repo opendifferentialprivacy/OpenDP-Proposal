@@ -12,14 +12,14 @@ class Tag(object):
     I64 = 1
 
 
-class Data(ctypes.Union):
+class Raw(ctypes.Union):
     _fields_ = [("F64", ctypes.c_double),
                 ("I64", ctypes.c_int64)]
 
 
 class Value(ctypes.Structure):
     _fields_ = [("tag", ctypes.c_int32),
-                ("data", Data)]
+                ("data", Raw)]
 
 # class Domain(ctypes.Structure):
 #     pass
@@ -91,9 +91,9 @@ class LibraryWrapper(object):
     def load_scalar(self, data):
 
         if type(data) == float:
-            value = Value(Tag.F64, Data(F64=data))
+            value = Value(Tag.F64, Raw(F64=data))
         elif type(data) == int:
-            value = Value(Tag.I64, Data(I64=data))
+            value = Value(Tag.I64, Raw(I64=data))
         else:
             raise ValueError(f"unrecognized type: {type(data)}")
         self.lib_opendp.load_scalar(ctypes.byref(value))

@@ -46,33 +46,34 @@ pub enum Error {
     NotImplemented
 }
 
-
-
-pub struct Transformation {
-    pub(crate) input_domain: Domain,
-    pub(crate) output_domain: Domain,
+pub struct Transformation<I, O> {
+    pub(crate) input_domain: Box<dyn Domain<I>>,
+    pub(crate) output_domain: Domain<O>,
     pub(crate) stability_relation: Box<dyn Fn(&DataDistance, &DataDistance) -> Result<bool, Error>>,
-    pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>,
+    pub(crate) function: Box<dyn Fn(Data<I>) -> Result<Data<O>, Error>>,
 }
 
-pub struct Measurement {
-    pub(crate) input_domain: Domain,
+pub struct Measurement<I> {
+    pub(crate) input_domain: Domain<I>,
     // pub(crate) input_metric: Metric,
     pub(crate) privacy_relation: Box<dyn Fn(&DataDistance, &PrivacyDistance) -> Result<bool, Error>>,
-    pub(crate) function: Box<dyn Fn(Data) -> Result<Data, Error>>
+    pub(crate) function: Box<dyn Fn(Data<I>) -> Result<Data<I>, Error>>
 }
 
-impl Transformation {
-    pub fn input_domain(&self) -> Domain {
+impl<I, O> Transformation<I, O> {
+    pub fn input_domain(&self) -> Domain<I> {
         self.input_domain.clone()
     }
-    pub fn output_domain(&self) -> Domain {
+    pub fn output_domain(&self) -> Domain<O> {
         self.output_domain.clone()
     }
 }
 
-impl Measurement {
-    pub fn function(&self, data: Data, in_dist: &DataDistance, out_dist: &PrivacyDistance) -> Result<Data, Error> {
+impl<I> Measurement<I> {
+    pub fn function(
+        &self, data: Data<I>, in_dist: &DataDistance, out_dist: &PrivacyDistance
+    ) -> Result<Data<I>, Error> {
+
         if !self.privacy_relation(in_dist, out_dist)? {
             return Err(Error::InsufficientBudget)
         }
@@ -84,19 +85,21 @@ impl Measurement {
     }
 }
 
-pub struct InteractiveMeasurement {
-    pub(crate) input_domain: Domain,
+pub struct InteractiveMeasurement<I, O> {
+    pub(crate) input_domain: Domain<I>,
     pub(crate) input_distance: DataDistance,
     pub(crate) privacy_loss: PrivacyDistance,
-    pub(crate) function: Box<dyn Fn(Data) -> Queryable<(Data, PrivacyDistance)>>
+    pub(crate) function: Box<dyn Fn(Data<I>) -> Queryable<O, (Data<O>, PrivacyDistance)>>
 }
 
-pub struct Queryable<S> {
+pub struct Queryable<I, S> {
     pub(crate) state: S,
-    pub(crate) eval: Box<dyn Fn(Measurement, PrivacyDistance, &S) -> (Result<Data, Error>, S)>
+    pub(crate) eval: Box<dyn Fn(Measurement<I>, PrivacyDistance, &S) -> (Result<Data<I>, Error>, S)>
 }
-impl<S> Queryable<S> {
-    fn query(&mut self, measurement: Measurement, privacy_loss: PrivacyDistance) -> Result<Data, Error> {
+impl<I, S> Queryable<I, S> {
+    fn query(
+        &mut self, measurement: Measurement<I>, privacy_loss: PrivacyDistance
+    ) -> Result<Data<I>, Error> {
         let (response, state) = (self.eval)(measurement, privacy_loss, &self.state);
         self.state = state;
         return response
@@ -104,26 +107,26 @@ impl<S> Queryable<S> {
 }
 
 
-pub fn make_adaptive_composition(
-    input_domain: Domain,
+pub fn make_adaptive_composition<I: Clone, O>(
+    input_domain: Domain<I>,
     input_distance: DataDistance,
     privacy_budget: PrivacyDistance,
-) -> InteractiveMeasurement {
+) -> InteractiveMeasurement<I, O> {
     InteractiveMeasurement {
         input_domain: input_domain.clone(),
         input_distance: input_distance.clone(),
         privacy_loss: privacy_budget.clone(),
-        function: Box::new(move |data: Data| -> Queryable<(Data, PrivacyDistance)> {
+        function: Box::new(move |data: Data<I>| -> Queryable<O, (Data<I>, PrivacyDistance)> {
             let input_domain = input_domain.clone();
             Queryable {
                 state: (data, privacy_budget.clone()),
                 eval: Box::new(move |
                     // query
-                    query: Measurement,
+                    query: Measurement<I>,
                     privacy_loss: PrivacyDistance,
                     // state
-                    (data, privacy_budget): &(Data, PrivacyDistance)
-                | -> (Result<Data, Error>, (Data, PrivacyDistance)) {
+                    (data, privacy_budget): &(Data<I>, PrivacyDistance)
+                | -> (Result<Data<I>, Error>, (Data<I>, PrivacyDistance)) {
                     if query.input_domain != input_domain.clone() {
                         return (Err(Error::DomainMismatch), (data.clone(), privacy_budget.clone()))
                     }
@@ -147,16 +150,16 @@ pub fn make_adaptive_composition(
 
 
 // issue: state is hardcoded, not generic
-pub fn postprocess(
-    interactive_measurement: InteractiveMeasurement,
-    queryable_map: Box<dyn Fn(Queryable<(Data, PrivacyDistance)>) -> Queryable<(Data, PrivacyDistance)>>
-) -> InteractiveMeasurement {
+pub fn postprocess<I, O>(
+    interactive_measurement: InteractiveMeasurement<I, O>,
+    queryable_map: Box<dyn Fn(Queryable<I, (Data<I>, PrivacyDistance)>) -> Queryable<O, (Data<O>, PrivacyDistance)>>
+) -> InteractiveMeasurement<I, O> {
     let function = interactive_measurement.function;
     InteractiveMeasurement {
         input_domain: interactive_measurement.input_domain,
         input_distance: interactive_measurement.input_distance,
         privacy_loss: interactive_measurement.privacy_loss,
-        function: Box::new(move |data: Data| {
+        function: Box::new(move |data: Data<I>| {
             let queryable_inner = (*function)(data);
             queryable_map(queryable_inner)
         })

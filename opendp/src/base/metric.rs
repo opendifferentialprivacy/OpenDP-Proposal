@@ -62,8 +62,8 @@ pub enum DataDistance {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PrivacyDistance {
-    Approximate(Scalar, Scalar),
-    ZConcentrated(Scalar)
+    Approximate(f64, f64),
+    ZConcentrated(f64)
 }
 
 macro_rules! impl_trait_privacy_distance {
@@ -74,9 +74,9 @@ macro_rules! impl_trait_privacy_distance {
             fn $trait_fun(self, rhs: PrivacyDistance) -> Self::Output {
                 Ok(match (self, rhs) {
                     (PrivacyDistance::Approximate(eps_l, del_l), PrivacyDistance::Approximate(eps_r, del_r)) =>
-                        PrivacyDistance::Approximate(apply_numeric!($generic_fun, eps_l: Scalar, eps_r: Scalar)?, apply_numeric!($generic_fun, del_l: Scalar, del_r: Scalar)?),
+                        PrivacyDistance::Approximate($generic_fun(eps_l, eps_r)?, $generic_fun(del_l, del_r)?),
                     (PrivacyDistance::ZConcentrated(rho_l), PrivacyDistance::ZConcentrated(rho_r)) =>
-                        PrivacyDistance::ZConcentrated(apply_numeric!($generic_fun, rho_l: Scalar, rho_r: Scalar)?),
+                        PrivacyDistance::ZConcentrated($generic_fun(rho_l, rho_r)?),
                     _ => return Err(Error::PrivacyMismatch)
                 })
             }
@@ -92,14 +92,14 @@ impl PartialOrd for PrivacyDistance {
         use PrivacyDistance::*;
         match (self, other) {
             (Approximate(l_eps, l_del), Approximate(r_eps, r_del)) => {
-                if let Some(Ordering::Greater) = apply_numeric!(fun::cmp, l_eps: Scalar, r_eps: Scalar).unwrap() {
+                if l_eps > r_eps {
                     Some(Ordering::Greater)
                 } else {
-                    apply_numeric!(fun::cmp, l_del: Scalar, r_del: Scalar).unwrap()
+                    l_del.partial_cmp(r_del)
                 }
             }
 
-            (ZConcentrated(l), ZConcentrated(r)) => apply_numeric!(fun::cmp, l: Scalar, r: Scalar).unwrap(),
+            (ZConcentrated(l), ZConcentrated(r)) => l.partial_cmp(&r),
             _ => None
         }
     }
@@ -112,8 +112,8 @@ impl PartialOrd for DataDistance {
         match (self, other) {
             (Symmetric(l), Symmetric(r)) => l.partial_cmp(r),
             (Hamming(l), Hamming(r)) => l.partial_cmp(r),
-            (L1Sensitivity(l), L1Sensitivity(r)) => apply_numeric!(fun::cmp, l: Scalar, r: Scalar).ok().and_then(|v| v),
-            (L2Sensitivity(l), L2Sensitivity(r)) => apply_numeric!(fun::cmp, l: Scalar, r: Scalar).ok().and_then(|v| v),
+            (L1Sensitivity(l), L1Sensitivity(r)) => l.cmp(&r),
+            (L2Sensitivity(l), L2Sensitivity(r)) => l.cmp(&r),
             _ => None
         }
     }
