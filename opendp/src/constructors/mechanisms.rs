@@ -1,97 +1,83 @@
-use crate::base::domain::{Domain, ScalarDomain};
-use crate::base::value::{Scalar};
+use crate::base::domain::{ScalarDomain};
 use crate::{Error, Measurement};
-use crate::base::metric::{PrivacyDistance, DataDistance};
-use num::{NumCast, ToPrimitive};
+use num::{NumCast, ToPrimitive, Float};
 use num::cast::cast;
 use crate::base::Data;
-use noisy_float::types::R64;
-use opendp_derive::{apply_numeric};
+use noisy_float::types::{R64, R32};
+use std::fmt::Display;
+use crate::base::metric::{Distance, Size};
 
 fn to_f64<T: NumCast + Clone>(v: T) -> Result<f64, Error> {
     cast::<T, R64>(v).ok_or_else(|| Error::UnsupportedCast)?
         .to_f64().ok_or_else(|| Error::UnsupportedCast)
 }
 
-fn relation_gaussian_mechanism<T: PartialOrd + NumCast>(
-    sensitivity: T, sigma: T, epsilon: &f64, delta: &f64
-) -> Result<bool, Error> {
-    let sensitivity: f64 = cast::<T, f64>(sensitivity).ok_or_else(|| Error::UnsupportedCast)?;
-    let sigma: f64 = cast::<T, f64>(sigma).ok_or_else(|| Error::UnsupportedCast)?;
+fn relation_gaussian_mechanism<T>(
+    sensitivity: T, sigma: T, epsilon: T, delta: T
+) -> Result<bool, Error>
+    where T: PartialOrd + NumCast + Float {
 
-    if delta < &0. {
+    fn to_<T: NumCast>(v: f64) -> Result<T, Error> {
+        cast::<f64, T>(v).ok_or(Error::UnsupportedCast)
+    }
+
+    if delta.is_sign_negative() {
         return Err(Error::Raw("delta may not be less than zero".to_string()))
     }
-    Ok(epsilon.min(1.) >= (sensitivity / sigma) * ((1.25 / delta).ln() * 2.).sqrt())
+    Ok(epsilon.min(to_::<T>(1.0)?) >= (sensitivity / sigma) * ((to_::<T>(1.25)? / delta).ln() * to_::<T>(2.0)?).sqrt())
 }
 
-pub fn gaussian_mechanism(
-    value: f64,
-    sigma: f64
-) -> Result<f64, Error> {
-    if sigma <= 0. {
-        return Err(Error::Raw(format!("sigma ({}) be positive", sigma)));
-        // return Err(Error::Raw(format!("sigma ({}) be positive", sigma).as_str()));
+pub trait NoisyFloat: Float {
+    fn sample_gaussian(_sigma: Self) -> Self {Self::zero()}
+}
+impl NoisyFloat for R32 {}
+impl NoisyFloat for R64 {}
+
+pub fn gaussian_mechanism<T: NoisyFloat + Display>(
+    value: T,
+    sigma: T
+) -> Result<T, Error> {
+    if sigma.is_sign_negative() || sigma.is_zero() {
+        return Err(Error::Raw(format!("sigma ({}) must be positive", sigma)));
     }
-    Ok(value + sample_gaussian(sigma))
-}
-
-// TODO: sample gaussian noise!
-fn sample_gaussian(_sigma: f64) -> f64 {
-    2.
+    Ok(value + NoisyFloat::sample_gaussian(sigma))
 }
 
 
-pub fn make_base_gaussian<T>(
-    input_domain: &dyn Domain<T>, sigma: T
-) -> Result<Measurement<T>, Error> {
+pub fn make_base_gaussian<T: 'static + NoisyFloat + Display>(
+    input_domain: ScalarDomain<T, T>, sigma: T
+) -> Result<Measurement<ScalarDomain<T, T>, T, T, T>, Error> {
 
-    let sigma_2 = sigma.clone();
+    let ScalarDomain {
+        may_have_nullity, nature, ..
+    } = input_domain.clone();
 
-    if let Some(domain) = input_domain.as_any().downcast_ref::<ScalarDomain<T>>() {
-
-        if domain.may_have_nullity {
-            return Err(Error::PotentialNullity)
-        }
-        let (lower, upper) = domain.nature.to_numeric()?.bounds();
-        if lower.is_none() { return Err(Error::UnknownBound) }
-        if upper.is_none() { return Err(Error::UnknownBound) }
-    } else {
-        return Err(Error::InvalidDomain)
+    if may_have_nullity {
+        return Err(Error::PotentialNullity)
     }
+    let (lower, upper) = nature.to_numeric()?.bounds();
+    if lower.is_none() { return Err(Error::UnknownBound) }
+    if upper.is_none() { return Err(Error::UnknownBound) }
 
     Ok(Measurement {
         input_domain,
-        privacy_relation: Box::new(move |in_dist: &DataDistance, out_dist: &PrivacyDistance| {
+        privacy_relation: Box::new(move |in_dist: &Distance<T>, out_dist: &Size<T>| {
 
-            let in_dist = if let DataDistance::L2Sensitivity(in_dist) = in_dist {
+            let in_dist = if let Distance::L2Sensitivity(in_dist) = in_dist {
                 in_dist
             } else {
                 return Err(Error::DistanceMismatch)
             };
 
             match out_dist {
-                PrivacyDistance::Approximate(epsilon, delta) =>
-                    relation_gaussian_mechanism(in_dist.clone(), sigma.clone(), epsilon, delta),
+                Size::Approximate(epsilon, delta) =>
+                    relation_gaussian_mechanism(in_dist.clone(), sigma.clone(), epsilon.clone(), delta.clone()),
                 _ => Err(Error::NotImplemented)
             }
         }),
         function: Box::new(move |data: Data<T>| match data {
-            Data::Value(value) => {
-                let value: f64 = value
-                    .to_f64().ok_or_else(|| Error::AtomicMismatch)?;
-                let sigma: f64 = apply_numeric!(to_f64, sigma_2.clone(): Scalar)?;
-                let release: f64 = gaussian_mechanism(value, sigma)?;
-
-                Ok(Data::Value(release))
-            },
+            Data::Value(value) => Ok(Data::Value(gaussian_mechanism(value, sigma)?)),
             _ => Err(Error::NotImplemented)
         })
     })
-}
-
-trait Operation {
-    type Item;
-
-    fn function<O>(input: Self::Item) -> O;
 }

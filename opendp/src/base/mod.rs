@@ -5,7 +5,6 @@ pub mod metric;
 pub (crate) mod functions;
 pub (crate) mod traits;
 
-use opendp_derive::AutoGet;
 use crate::Error;
 
 #[derive(Clone, Debug)]

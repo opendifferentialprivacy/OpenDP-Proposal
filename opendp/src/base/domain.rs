@@ -1,50 +1,46 @@
 
 use crate::Error;
-use crate::base::functions as fun;
-use opendp_derive::{AutoFrom, AutoGet};
 use std::marker::PhantomData;
-use std::any::Any;
+use itertools::Itertools;
+use std::hash::Hash;
 
-// Ethan: Am I correct in understanding this?
-// 1. Each domain has an atomic type (the type of the data it contains), a length (the number of such
-//    items in the domain, and a bool is_nonempty, which states whether it contains any data.
-// 2. What is the need for is_nonempty? Wouldn't a length of 0 => empty?
-
-// Mike:
-// 1. Pretty much. Dataframes may contain multiple atomic types- one for each column.
-// 2. The separate boolean came from a common situation in Whitenoise where a component
-//        would throw an error at function evaluation when the data was empty,
-//        but the component didn't need to know the number of records.
-//        In this library, we could either
-//         A. keep that property, to prevent construction of a function that may be ill-defined
-//         B. in some cases propagate optional types, if emptiness would cause an error.
-//            Sum- non optional, Mean- optional, Variance- optional, etc.
-//            Mechanisms- take optional or non-optional, and sample from propagated bounds if null?
-// There are other domain descriptors we will need to pull from Whitenoise. These are just the first ones I grabbed.
-pub trait Domain<T> {
-    fn as_any(&self) -> &dyn Any;
-    fn is_same(&self, other: Box<dyn Domain<T>>) -> bool;
+pub trait Domain: Clone + PartialEq {
+    type Member;
+    // fn valid(&self, x: Self::Member) -> bool;
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct ScalarDomain<T> {
+pub struct ScalarDomain<C: Clone, T: PartialEq + Clone> {
     pub may_have_nullity: bool,
-    pub nature: Nature<T>
+    pub nature: Nature<T>,
+    pub container: PhantomData<C>
+}
+
+impl<C: Clone + PartialEq, T: PartialEq + Clone> Domain for ScalarDomain<C, T> {
+    type Member = C;
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct VectorDomain<C, T> {
-    pub atomic_type: Box<dyn Domain<T>>,
+pub struct VectorDomain<T: Clone, D: Domain + Clone> {
+    pub atomic_type: D,
     pub is_nonempty: bool,
     pub length: Option<usize>,
-    pub container: PhantomData<C>
+    pub container: PhantomData<T>
+}
+
+impl<T: Clone + PartialEq, D: Domain + Clone> Domain for VectorDomain<T, D> {
+    type Member = T;
 }
 
 // #[derive(PartialEq, Clone, Debug)]
 // pub struct DataframeDomain {
-//     pub columns: IndexMap<String, Domain>,
+//     pub columns: IndexMap<String, Box<dyn Any>>,
 //     pub is_nonempty: bool,
 //     pub length: Option<usize>,
+// }
+//
+// impl Domain for DataframeDomain {
+//     type Member = IndexMap<String, Box<dyn Any>>;
 // }
 
 // Ethan: I know I asked this in our meeting -
@@ -56,10 +52,40 @@ pub struct VectorDomain<C, T> {
 // Basically referring to these:
 // https://en.wikipedia.org/wiki/Statistical_data_type
 // Some domain descriptors are only relevant for certain data types
-#[derive(PartialEq, Clone, Debug, AutoFrom, AutoGet)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Nature<T> {
     Numeric(Interval<T>),
     Categorical(Categories<T>),
+}
+
+impl<T> Nature<T> {
+    pub fn to_numeric(self) -> Result<Interval<T>, Error> {
+        match self {
+            Nature::Numeric(v) => Ok(v),
+            _ => Err(Error::AtomicMismatch)
+        }
+    }
+
+    pub fn as_numeric(&self) -> Result<&Interval<T>, Error> {
+        match self {
+            Nature::Numeric(v) => Ok(v),
+            _ => Err(Error::AtomicMismatch)
+        }
+    }
+
+    pub fn to_categorical(self) -> Result<Categories<T>, Error> {
+        match self {
+            Nature::Categorical(v) => Ok(v),
+            _ => Err(Error::AtomicMismatch)
+        }
+    }
+
+    pub fn as_categorical(&self) -> Result<&Categories<T>, Error> {
+        match self {
+            Nature::Categorical(v) => Ok(v),
+            _ => Err(Error::AtomicMismatch)
+        }
+    }
 }
 
 // Ethan: What will this be used for?
@@ -71,10 +97,9 @@ pub enum Nature<T> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Categories<T>(Vec<T>);
 
-impl<T: Eq> Categories<T> {
+impl<T: Eq + Clone + Hash> Categories<T> {
     pub fn new(values: Vec<T>) -> Categories<T> {
-        // TODO: check that the type has equality
-        Categories(fun::deduplicate(values).unwrap())
+        Categories(values.into_iter().unique().collect())
     }
     pub fn get(self) -> Vec<T> { self.0 }
 }
@@ -99,16 +124,7 @@ impl<T: PartialOrd> Interval<T> {
     }
 }
 
-// impl DataframeDomain {
-//     pub fn assert_non_null(&self) -> Result<(), Error> {
-//         for atomic_type in self.columns.values() {
-//             atomic_type.assert_non_null()?
-//         }
-//         Ok(())
-//     }
-// }
-
-impl<T> ScalarDomain<T> {
+impl<C: Clone, T: PartialEq + Clone> ScalarDomain<C, T> {
     pub fn assert_non_null(&self) -> Result<(), Error> {
         if self.may_have_nullity {
             Err(Error::PotentialNullity)

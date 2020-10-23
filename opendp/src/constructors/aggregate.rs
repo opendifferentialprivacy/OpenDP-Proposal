@@ -1,4 +1,5 @@
 use std::iter::Sum;
+use std::marker::PhantomData;
 use std::ops::{Mul, Sub};
 
 use num::cast::cast;
@@ -6,12 +7,10 @@ use num::NumCast;
 
 use crate::{Error, Transformation};
 use crate::base::Data;
-use crate::base::domain::{Domain, ScalarDomain, VectorDomain, Nature, Interval};
+use crate::base::domain::{Interval, Nature, ScalarDomain, VectorDomain};
 use crate::base::functions as fun;
-use crate::base::metric::DataDistance;
+use crate::base::metric::{Metric, Distance};
 use crate::base::traits::OmniAbs;
-use crate::base::value::{Scalar, Vector, Value};
-
 
 fn mul_constant<T>(l: T, r: usize) -> Result<T, Error>
     where T: Mul<Output=T> + NumCast {
@@ -46,19 +45,18 @@ fn sensitivity_hamming<T>(lower: T, upper: T) -> T
     upper.sub(lower)
 }
 
-/// constructor to build a sum transformation over a vector
-pub fn make_sum<C, T>(input_domain: &dyn Domain<C>) -> Result<Transformation<Vec<C>, T>, Error> {
-    // destructure the descriptor for the input domain, enforcing that it is a vector
-    let VectorDomain {
-        atomic_type,
-        is_nonempty: _,
-        length,
-        ..
-    } = input_domain.as_any().downcast_ref::<VectorDomain<C, T>>()
-        .ok_or_else(|| Error::InvalidDomain)?;
 
-    let atomic_type = atomic_type.as_any().downcast_ref::<ScalarDomain<T>>()
-        .ok_or_else(|| Error::InvalidDomain)?;
+type InputDomain<T> = VectorDomain<Vec<T>, ScalarDomain<T, T>>;
+type OutputDomain<T> = ScalarDomain<T, T>;
+
+/// constructor to build a sum transformation over a vector
+pub fn make_sum<T>(
+    input_domain: InputDomain<T>, input_metric: Metric, output_metric: Metric
+) -> Result<Transformation<InputDomain<T>, OutputDomain<T>, u32, T>, Error>
+    where T: 'static + Sum + PartialOrd + Clone + Mul<Output=T> + Sub<Output=T> + NumCast + OmniAbs {
+    // destructure the descriptor for the input domain, enforcing that it is a vector
+    let length = input_domain.length.clone();
+    let atomic_type = input_domain.atomic_type.clone();
 
     let (lower, upper) = atomic_type.nature.as_numeric()?.clone().bounds();
 
@@ -66,39 +64,42 @@ pub fn make_sum<C, T>(input_domain: &dyn Domain<C>) -> Result<Transformation<Vec
         may_have_nullity: atomic_type.may_have_nullity,
         nature: Nature::Numeric(Interval::new(
             // derive new lower bound
-            match (&lower, length) {
+            match (lower.clone(), length) {
                 (Some(lower), Some(length)) =>
-                    Some(mul_constant(lower.clone(), *length)?),
+                    Some(mul_constant(lower, length)?),
                 _ => None
             },
             // derive new upper bound
-            match (&upper, length) {
+            match (upper.clone(), length) {
                 (Some(upper), Some(length)) =>
-                    Some(mul_constant(upper.clone(), *length)?),
+                    Some(mul_constant(upper, length)?),
                 _ => None
             }
-        )?)
+        )?),
+        container: PhantomData::<T>
     };
 
     Ok(Transformation {
-        input_domain: Box::new(input_domain),
-        output_domain: Box::new(output_domain) as Box<dyn Domain<C>>,
-        stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| {
+        input_domain,
+        input_metric,
+        output_domain,
+        output_metric,
+        stability_relation: Box::new(move |d_in: &Distance<u32>, d_out: &Distance<T>| {
             // ensure existence of bounds
             let lower = lower.clone().ok_or_else(|| Error::UnknownBound)?;
             let upper = upper.clone().ok_or_else(|| Error::UnknownBound)?;
 
             // L1 and L2 sensitivity are the same
-            let d_out = match d_out {
-                DataDistance::L1Sensitivity(v) => v,
-                DataDistance::L2Sensitivity(v) => v,
+            let sensitivity = match d_out {
+                Distance::L1Sensitivity(v) => v,
+                Distance::L2Sensitivity(v) => v,
                 _ => return Err(Error::DistanceMismatch)
             }.clone();
 
             // check relation depending on input distance type
             match d_in {
-                DataDistance::Symmetric(d_in) => relation_symmetric(lower, upper, d_out, d_in),
-                DataDistance::Hamming(d_in) => relation_hamming(lower, upper, d_out, d_in),
+                Distance::Symmetric(d_in) => relation_symmetric(lower, upper, sensitivity, d_in),
+                Distance::Hamming(d_in) => relation_hamming(lower, upper, sensitivity, d_in),
                 _ => Err(Error::DistanceMismatch)
             }
         }),
@@ -107,7 +108,7 @@ pub fn make_sum<C, T>(input_domain: &dyn Domain<C>) -> Result<Transformation<Vec
         function: Box::new(move |data: Data<Vec<T>>| {
             match data {
                 Data::Value(data) =>
-                    Ok(Data::Value(data.to_vector()?.into_iter().sum())),
+                    Ok(Data::Value(data.into_iter().sum())),
                 _ => unimplemented!()
             }
         })

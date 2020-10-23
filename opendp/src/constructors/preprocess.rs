@@ -1,15 +1,10 @@
 
 use crate::{Transformation, Error};
-use crate::base::domain::{Domain, ScalarDomain, Interval, Nature, VectorDomain};
-use crate::base::value::*;
-use crate::base::metric::DataDistance;
+use crate::base::domain::{ScalarDomain, Interval, Nature, VectorDomain};
+use crate::base::metric::{Metric, Distance};
 // use crate::base::Data;
 use crate::base::{functions as fun, Data};
-use std::cmp::Ordering;
-use opendp_derive::{apply_numeric, apply_option_integer};
-use std::ops::{Div, Add};
-use num::NumCast;
-use num::cast;
+use noisy_float::types::{R64, r64};
 
 fn clamp<T: PartialOrd>(v: T, l: T, u: T) -> Result<T, Error> {
     fun::min(fun::max(v, l)?, u)
@@ -19,40 +14,42 @@ fn clamp_vec<T: PartialOrd + Clone>(v: Vec<T>, l: T, u: T) -> Result<Vec<T>, Err
     v.into_iter().map(|v| clamp(v, l.clone(), u.clone())).collect()
 }
 
-pub fn make_clamp_numeric<T>(input_domain: &dyn Domain<T>, lower: T, upper: T) -> Result<Transformation<Vec<T>, Vec<T>>, Error> {
+type ClampDomain<T> = VectorDomain<Vec<T>, ScalarDomain<T, T>>;
+pub fn make_clamp_numeric<I, T, M>(
+    input_domain: ClampDomain<T>, input_metric: Metric, lower: T, upper: T
+) -> Result<Transformation<ClampDomain<T>, ClampDomain<T>, M, M>, Error>
+    where T: 'static + PartialOrd + Clone,
+          M: 'static + PartialOrd + Clone {
 
-    let clamp_atomic_domain = |atomic_type: &dyn Domain<T>| -> Result<dyn Domain<T>, Error> {
-        if let Some()
-        let ScalarDomain { ref may_have_nullity, ref nature } = atomic_type.as_scalar()?.clone();
+    let clamp_atomic_domain = |atomic_type: ScalarDomain<T, T>| -> Result<ScalarDomain<T, T>, Error> {
+        let ScalarDomain { may_have_nullity, nature, container } = atomic_type;
 
         let (prior_lower, prior_upper) = nature.clone().to_numeric()?.bounds();
 
-        let lower: Scalar = prior_lower.as_ref()
-            .map(|prior_lower| fun::max(&lower, &prior_lower))
+        let lower: T = prior_lower
+            .map(|prior_lower| fun::max(&lower, &prior_lower).map(|v| v.clone()))
             .transpose()?.unwrap_or(lower.clone());
 
-        let upper: Scalar = prior_upper.as_ref()
-            .map(|prior_upper| fun::min(&upper, &prior_upper))
+        let upper: T = prior_upper
+            .map(|prior_upper| fun::min(&upper, &prior_upper).map(|v| v.clone()))
             .transpose()?.unwrap_or(upper.clone());
 
-        Ok(Box::new(ScalarDomain {
-            may_have_nullity: *may_have_nullity,
-            nature: Nature::Numeric(Interval::new(Some(lower), Some(upper))?)
-        }) as _)
+        Ok(ScalarDomain {
+            may_have_nullity,
+            nature: Nature::Numeric(Interval::new(Some(lower), Some(upper))?),
+            container
+        })
     };
 
-    let output_domain = match input_domain.clone() {
-        Domain::Vector(mut domain) => {
-            domain.atomic_type = Box::new(clamp_atomic_domain(domain.atomic_type.as_ref())?);
-            Domain::Vector(domain)
-        }
-        _ => return Err(Error::InvalidDomain)
-    };
+    let mut output_domain = input_domain.clone();
+    output_domain.atomic_type = clamp_atomic_domain(output_domain.atomic_type)?;
 
     Ok(Transformation {
-        input_domain: Box::new(input_domain),
+        input_domain,
+        input_metric: input_metric.clone(),
         output_domain,
-        stability_relation: Box::new(move |in_dist: &DataDistance, out_dist: &DataDistance| Ok(in_dist <= out_dist)),
+        output_metric: input_metric.clone(),
+        stability_relation: Box::new(move |in_dist: &Distance<M>, out_dist: &Distance<M>| Ok(in_dist <= out_dist)),
         function: Box::new(move |data: Data<Vec<T>>| match data {
             Data::Value(data) => {
                 Ok(Data::Value(clamp_vec(data, lower.clone(), upper.clone())?))
@@ -62,68 +59,77 @@ pub fn make_clamp_numeric<T>(input_domain: &dyn Domain<T>, lower: T, upper: T) -
     })
 }
 
-
-fn wrap_option<T>(v: T) -> Result<Option<T>, Error> { Ok(Some(v)) }
-
-fn impute_int_vec<T: Div<Output=T> + Add<Output=T> + NumCast + Clone>(
-    v: Vec<Option<T>>, l: Option<T>, u: Option<T>
-) -> Result<Vec<T>, Error> {
-    let (l, u, two) = (l.unwrap(), u.unwrap(), cast::<i128, T>(2).unwrap());
-    Ok(v.into_iter().map(|v| v.unwrap_or((l.clone() + u.clone()) / two.clone())).collect())
+trait Impute {
+    type Output;
+    fn impute(self, lower: Self::Output, upper: Self::Output) -> Self::Output;
 }
 
-pub fn make_impute_integer<T: Clone + PartialOrd>(
-    input_domain: &dyn Domain<T>, lower: T, upper: T,
-) -> Result<Transformation<Vec<T>, Vec<T>>, Error> {
-    if lower > upper {
-        return Err(Error::Raw("lower may not be greater than upper".to_string()))
+impl Impute for f64 {
+    type Output = R64;
+    fn impute(self, lower: R64, upper: R64) -> Self::Output {
+        if self.is_finite() { r64(self) } else { (lower + upper) / r64(2.) }
     }
-
-    // function that applies impute transformation to atomic type
-    let impute_atomic_domain = |atomic_type: &dyn Domain<T>| -> Result<Box<dyn Domain<T>>, Error> {
-
-        // atomic type must be a scalar
-        let nature = atomic_type.as_scalar()?.clone().nature;
-
-        // retrieve lower and upper bounds for the data domain
-        let (prior_lower, prior_upper) = nature.to_numeric()?.bounds();
-
-        // if lower bound on the input domain exists, then potentially widen it or return none
-        let lower = Some(prior_lower
-            .map(|prior_lower| fun::max(&lower, &prior_lower))
-            .transpose()?.unwrap_or(lower.clone()));
-
-        // if upper bound on the input domain exists, then potentially widen it or return none
-        let upper = Some(prior_upper
-            .map(|prior_upper| apply_numeric!(fun::min, &upper: Scalar, &prior_upper: Scalar))
-            .transpose()?.unwrap_or(upper.clone()));
-
-        Ok(Box::new(ScalarDomain {
-            may_have_nullity: false,
-            nature: Nature::Numeric(Interval::new(lower, upper)?)
-        }) as _)
-    };
-
-
-    let output_domain = if let Some(mut domain) = input_domain.as_any()
-        .downcast_ref::<VectorDomain<Vec<T>, T>>() {
-
-        // apply imputation transformation to the atomic domain
-        domain.atomic_type = impute_atomic_domain(domain.atomic_type)?;
-        Box::new(domain) as Box<dyn Domain<T>>
-    } else { return Err(crate::Error::InvalidDomain) };
-
-
-    Ok(Transformation {
-        input_domain: Box::new(input_domain),
-        output_domain: Box::new(output_domain) as Box<dyn Domain<Vec<T>>>,
-        stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| Ok(d_in <= d_out)),
-        function: Box::new(move |data: Data<T>| match data {
-            Data::Value(data) => Ok(Data::Value(impute_int_vec(data.to_vector()?,lower_wrap.clone(), upper_wrap.clone())?)),
-            _ => Err(Error::NotImplemented)
-        })
-    })
 }
+
+impl Impute for Option<i64> {
+    type Output = i64;
+    fn impute(self, lower: i64, upper: i64) -> Self::Output {
+        self.unwrap_or_else(|| (lower + upper) / 2)
+    }
+}
+
+// pub fn make_impute_integer<T: Impute<Output=U>, U: Clone + PartialOrd>(
+//     input_domain: &dyn Domain<Vec<T>>, lower: U, upper: U,
+// ) -> Result<Transformation<Vec<T>, Vec<U>>, Error> {
+//     if lower > upper {
+//         return Err(Error::Raw("lower may not be greater than upper".to_string()))
+//     }
+//
+//     // function that applies impute transformation to atomic type
+//     let impute_atomic_domain = |atomic_type: &dyn Domain<T>| -> Result<Box<dyn Domain<T>>, Error> {
+//         let ScalarDomain { may_have_nullity, nature } = atomic_type
+//             .as_any().downcast_ref::<ScalarDomain<T>>()
+//             .ok_or(Error::InvalidDomain)?;
+//
+//         // retrieve lower and upper bounds for the data domain
+//         let (prior_lower, prior_upper) = nature.to_numeric()?.bounds();
+//
+//         // if lower bound on the input domain exists, then potentially widen it or return none
+//         let lower = Some(prior_lower
+//             .map(|prior_lower| fun::max(&lower, &prior_lower))
+//             .transpose()?.unwrap_or(lower.clone()));
+//
+//         // if upper bound on the input domain exists, then potentially widen it or return none
+//         let upper = Some(prior_upper
+//             .map(|prior_upper| fun::min(&upper, &prior_upper))
+//             .transpose()?.unwrap_or(upper.clone()));
+//
+//         Ok(Box::new(ScalarDomain {
+//             may_have_nullity: false,
+//             nature: Nature::Numeric(Interval::new(lower, upper)?)
+//         }))
+//     };
+//
+//     let VectorDomain {
+//         atomic_type, is_nonempty, length, container
+//     } = input_domain.as_any().downcast_ref::<VectorDomain<Vec<T>, T>>()
+//         .ok_or(Error::InvalidDomain)?;
+//
+//     Ok(Transformation {
+//         input_domain: Box::new(input_domain),
+//         output_domain: Box::new(VectorDomain {
+//             atomic_type: impute_atomic_domain(atomic_type)?,
+//             is_nonempty: is_nonempty.clone(),
+//             length: length.clone(),
+//             container: container.clone()
+//         }),
+//         stability_relation: Box::new(move |d_in: &DataDistance, d_out: &DataDistance| Ok(d_in <= d_out)),
+//         function: Box::new(move |data: Data<T>| match data {
+//             Data::Value(data) => Ok(Data::Value(impute_int_vec(data.to_vector()?,lower_wrap.clone(), upper_wrap.clone())?)),
+//             _ => Err(Error::NotImplemented)
+//         })
+//     })
+// }
 
 // #[cfg(test)]
 // pub mod test_impute_numeric {
@@ -151,4 +157,4 @@ pub fn make_impute_integer<T: Clone + PartialOrd>(
 //             panic!("Impute must fail if bounds are unordered.")
 //         }
 //     }
-}
+// }
