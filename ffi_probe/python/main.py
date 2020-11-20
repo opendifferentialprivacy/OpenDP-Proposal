@@ -1,67 +1,72 @@
 import ctypes
+import json
 
 
-lib_path = "../target/debug/libffi_probe.dylib"
-lib = ctypes.cdll.LoadLibrary(lib_path)
+class Mod:
 
-def get_ffi(name, argtypes, restype):
-    fn = lib[name]
-    fn.argtypes = argtypes
-    fn.restype = restype
-    return fn
+    name_to_type = {
+        "void": None,
+        "void *": ctypes.c_void_p,
+        "const void *": ctypes.c_void_p,
+        "int8_t": ctypes.c_int8,
+        "int16_t": ctypes.c_int16,
+        "int32_t": ctypes.c_int32,
+        "int64_t": ctypes.c_int64,
+        "uint8_t": ctypes.c_uint8,
+        "uint16_t": ctypes.c_uint16,
+        "uint32_t": ctypes.c_uint32,
+        "uint64_t": ctypes.c_uint64,
+        "float": ctypes.c_float,
+        "double": ctypes.c_double,
+        "char *": ctypes.c_char_p,
+        "const char *": ctypes.c_char_p,
+    }
 
+    @classmethod
+    def get_type(cls, name):
+        if not name in cls.name_to_type:
+            raise Exception(f"Unknown type {name}")
+        return cls.name_to_type[name]
 
-class Operation(ctypes.Structure):
-    pass
+    def __init__(self, lib, prefix="ffi__"):
+        self.lib = lib
+        self.prefix = prefix
+        self._bootstrap()
 
-Tag = ctypes.c_int
-Tag_I32 = 0
-Tag_I64 = 1
-Tag_F32 = 2
-Tag_F64 = 3
+    def _bootstrap(self):
+        spec = { "name": "bootstrap", "args": [], "ret": "const char *" }
+        _name, bootstrap = self._get_function(spec)
+        spec_json = c_char_p_to_str(bootstrap())
+        spec = json.loads(spec_json)
+        self._load(spec)
 
-class Value(ctypes.Union):
-    _fields_ = [("i32", ctypes.c_int32), ("i64", ctypes.c_int64), ("f32", ctypes.c_float), ("f64", ctypes.c_double)]
+    def _load(self, spec):
+        for function_spec in spec["functions"]:
+            name, function = self._get_function(function_spec)
+            self.__setattr__(name, function)
 
+    def _get_function(self, spec):
+        name = spec["name"]
+        symbol = self.prefix + name
+        function = self.lib[symbol]
+        function.argtypes = [self.get_type(arg[0]) for arg in spec["args"]]
+        function.restype = self.get_type(spec["ret"])
+        return name, function
 
-print("\nOPTION 1-A")
-make_clamp = get_ffi("make_clamp_struct_f64", [ctypes.c_double, ctypes.c_double], ctypes.POINTER(Operation))
-invoke = get_ffi("invoke_struct_f64", [ctypes.POINTER(Operation), ctypes.c_double], ctypes.c_double)
-clamp = make_clamp(5.0, 10.0)
-res = invoke(clamp, -1.0)
-print("res = {}".format(res))
+def str_to_c_char_p(s):
+    return s.encode("utf-8")
 
+def c_char_p_to_str(s):
+    return s.decode("utf-8")
 
-print("\nOPTION 1-B-1")
-make_clamp = get_ffi("make_clamp_struct_tag_union", [Tag, Value, Value], ctypes.POINTER(Operation))
-invoke = get_ffi("invoke_struct_tag_union", [Tag, ctypes.POINTER(Operation), Value], Value)
-clamp = make_clamp(Tag_F64, Value(f64=5.0), Value(f64=10.0))
-res = invoke(Tag_F64, clamp, Value(f64=-1.0))
-print("res = {}".format(res.f64))
+def main():
+    lib_path = "../target/debug/libffi_probe.dylib"
+    lib = ctypes.cdll.LoadLibrary(lib_path)
+    data = Mod(lib, "opendp_data__")
+    ops = Mod(lib, "opendp_ops__")
+    arg = data.new_string(str_to_c_char_p("howdy\ndoody"))
+    ret = ops.split_lines(arg)
+    print(ret)
 
-
-print("\nOPTION 1-B-2")
-make_clamp = get_ffi("make_clamp_struct_tag_pointer", [Tag, ctypes.c_void_p, ctypes.c_void_p], ctypes.POINTER(Operation))
-invoke = get_ffi("invoke_struct_tag_pointer", [Tag, ctypes.POINTER(Operation), ctypes.c_void_p], ctypes.c_void_p)
-clamp = make_clamp(Tag_F64, ctypes.byref(ctypes.c_double(5.0)), ctypes.byref(ctypes.c_double(10.0)))
-res = invoke(Tag_F64, clamp, ctypes.byref(ctypes.c_double(-1.0)))
-print("res = {}".format(ctypes.cast(res, ctypes.POINTER(ctypes.c_double)).contents))
-
-
-print("\nOPTION 2-A")
-make_clamp = get_ffi("make_clamp_trait_f64", [ctypes.c_double, ctypes.c_double], ctypes.c_void_p)
-invoke = get_ffi("invoke_trait_union", [ctypes.c_void_p, Value], Value)
-clamp = make_clamp(5.0, 10.0)
-res = invoke(clamp, Value(f64=-1.0))
-print("res = {}".format(res.f64))
-
-
-print("\nOPTION 2-B-1")
-make_clamp = get_ffi("make_clamp_trait_tag_union", [Tag, Value, Value], ctypes.c_void_p)
-invoke = get_ffi("invoke_trait_union", [ctypes.c_void_p, Value], Value)
-clamp = make_clamp(Tag_F64, Value(f64=5.0), Value(f64=10.0))
-res = invoke(clamp, Value(f64=-1.0))
-print("res = {}".format(res.f64))
-
-
-print("\nIT DIDN'T CRASH!!!")
+if __name__ == "__main__":
+    main()
