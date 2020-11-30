@@ -1,8 +1,6 @@
 pub mod core;
 pub mod data;
-pub mod dom_carrier_no_trait;
-pub mod dom_carrier_trait;
-pub mod dom_no_carrier;
+pub mod dom;
 pub mod mono;
 pub mod ops;
 

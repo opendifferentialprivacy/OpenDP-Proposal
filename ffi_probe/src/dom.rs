@@ -1,40 +1,12 @@
 use std::any::Any;
-use std::ops::Bound;
 use std::marker::PhantomData;
+use std::ops::Bound;
+
+use crate::core::Domain;
+use crate::data::{Form, TraitObject};
 
 
-pub struct Generic {
-    concrete: Box<dyn Any>,
-}
-impl Generic {
-    pub fn new<T: 'static + Concrete>(concrete: T) -> Generic {
-        Generic { concrete: Box::new(concrete) }
-    }
-    pub fn as_concrete<T: 'static + Concrete>(&self) -> Option<&T> {
-        self.concrete.downcast_ref()
-    }
-}
-
-pub trait Concrete {
-    fn as_any(&self) -> &dyn Any;
-}
-
-pub trait Carry: Concrete {
-    type Carrier;
-}
-
-
-pub trait Domain: Carry {
-    fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool;
-    fn check_valid(&self, val: &Generic) -> bool where
-        Self::Carrier: 'static + Concrete {
-        val.as_concrete::<Self::Carrier>().map_or(false, |v| self.check_valid_impl(v))
-    }
-    fn check_valid_impl(&self, val: &Self::Carrier) -> bool;
-}
-
-
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AllDomain<T> {
     _marker: PhantomData<T>,
 }
@@ -43,13 +15,13 @@ impl<T> AllDomain<T> {
         AllDomain { _marker: PhantomData }
     }
 }
-impl<T: 'static> Concrete for AllDomain<T> {
+impl<T: 'static + Form + Clone> TraitObject for AllDomain<T> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
-impl<T: 'static> Carry for AllDomain<T> {
+impl<T: 'static + Form + Clone> Domain for AllDomain<T> {
     type Carrier = T;
-}
-impl<T: 'static> Domain for AllDomain<T> {
+    fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, _other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         true
     }
@@ -59,7 +31,7 @@ impl<T: 'static> Domain for AllDomain<T> {
 }
 
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct IntervalDomain<T> {
     lower: Bound<T>,
     upper: Bound<T>,
@@ -69,14 +41,15 @@ impl<T> IntervalDomain<T> {
         IntervalDomain { lower, upper }
     }
 }
-impl<T: 'static> Concrete for IntervalDomain<T> {
+impl<T: 'static + Clone> TraitObject for IntervalDomain<T> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
-impl<T: 'static> Carry for IntervalDomain<T> {
+impl<T: 'static + Form + Clone + PartialOrd> Domain for IntervalDomain<T> {
     type Carrier = T;
-}
-impl<T: 'static + PartialOrd> Domain for IntervalDomain<T> {
+    fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
+        // TODO: Accept enclosing intervals.
         other.as_any().downcast_ref::<Self>().map_or(false, |e| e == self)
     }
     fn check_valid_impl(&self, val: &Self::Carrier) -> bool {
@@ -98,18 +71,23 @@ pub struct VectorDomain<T> {
     element_domain: Box<dyn Domain<Carrier=T>>,
     _marker: PhantomData<T>,
 }
-impl<T: 'static> VectorDomain<T> {
-    pub fn new(element_domain: impl Domain<Carrier=T> + 'static) -> VectorDomain<T> {
-        VectorDomain { element_domain: Box::new(element_domain), _marker: PhantomData }
+impl<T: 'static + Form> VectorDomain<T> {
+    pub fn new(element_domain: Box<dyn Domain<Carrier=T>>) -> VectorDomain<T> {
+        VectorDomain { element_domain, _marker: PhantomData }
     }
 }
-impl<T: 'static> Concrete for VectorDomain<T> {
+impl<T: 'static + Form> TraitObject for VectorDomain<T> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
-impl<T: 'static> Carry for VectorDomain<T> {
-    type Carrier = Vec<T>;
+impl<T: 'static + Form> Clone for VectorDomain<T> {
+    fn clone(&self) -> Self {
+        VectorDomain::new(self.element_domain.box_clone())
+    }
 }
-impl<T: 'static> Domain for VectorDomain<T> {
+impl<T: 'static + Form + Clone + PartialEq> Domain for VectorDomain<T> {
+    type Carrier = Vec<T>;
+    fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         other.as_any().downcast_ref::<Self>().map_or(false, |o| self.element_domain.check_compatible(&*o.element_domain))
     }

@@ -7,7 +7,7 @@ use std::str::FromStr;
 use crate::core::Operation;
 use crate::data::{Data, Form};
 
-pub fn make_identity() -> Operation {
+pub fn make_identity<T: 'static + Form + Clone>() -> Operation<T, T> {
     let function = |arg: &Data| -> Data {
         arg.clone()
     };
@@ -34,7 +34,7 @@ fn split_lines(s: &str) -> Vec<&str> {
     s.lines().collect()
 }
 
-pub fn make_split_lines() -> Operation {
+pub fn make_split_lines() -> Operation<String, Vec<String>> {
     let function = |arg: &Data| -> Data {
         let form: &String = arg.as_form();
         let lines = vec_str_to_string(split_lines(form));
@@ -65,7 +65,7 @@ fn split_records<'a>(separator: Option<&str>, lines: &Vec<&'a str>) -> Vec<Vec<&
     cols
 }
 
-pub fn make_split_records(separator: Option<&str>) -> Operation {
+pub fn make_split_records(separator: Option<&str>) -> Operation<Vec<String>, Vec<Vec<String>>> {
     let separator = separator.map(ToOwned::to_owned);
     let function = move |arg: &Data| -> Data {
         let form: &Vec<String> = arg.as_form();
@@ -87,7 +87,7 @@ fn parse_col<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     }
 }
 
-pub fn make_parse_col<T>(default_on_error: bool) -> Operation where
+pub fn make_parse_col<T>(default_on_error: bool) -> Operation<Vec<String>, Vec<T>> where
     T: 'static + Form + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let function = move |arg: &Data| -> Data {
         let form: &Vec<String> = arg.as_form();
@@ -104,7 +104,7 @@ pub fn create_dataframe(cols: Vec<Vec<&str>>) -> DataFrame {
     cols.into_iter().enumerate().map(|(k, v)| (k.to_string(), vec_str_to_string(v).into())).collect()
 }
 
-pub fn make_create_dataframe() -> Operation {
+pub fn make_create_dataframe() -> Operation<Vec<Vec<String>>, DataFrame> {
     let function = |arg: &Data| -> Data {
         let form: &Vec<Vec<String>> = arg.as_form();
         let form = vec_vec_string_to_str(form);
@@ -120,7 +120,7 @@ pub fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
     df
 }
 
-pub fn make_replace_col(key: String) -> Operation {
+pub fn make_replace_col(key: String) -> Operation<(DataFrame, Data), DataFrame> {
     let function = move |arg: &Data| -> Data {
         let form: &(DataFrame, Data) = arg.as_form();
         let ret = replace_col(&key, &form.0, &form.1);
@@ -169,7 +169,7 @@ pub fn parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option
     df
 }
 
-pub fn make_parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option<&str>, impute: bool) -> Operation where
+pub fn make_parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option<&str>, impute: bool) -> Operation<String, DataFrame> where
     T0: 'static + Form + Clone + PartialEq + FromStr + Default, T0::Err: Debug,
     T1: 'static + Form + Clone + PartialEq + FromStr + Default, T1::Err: Debug,
     T2: 'static + Form + Clone + PartialEq + FromStr + Default, T2::Err: Debug,
@@ -190,59 +190,110 @@ pub fn make_parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: O
 }
 
 
-mod ffi {
-    use std::os::raw::c_char;
 
-    use crate::ffi_utils;
-    use crate::ffi_utils::c_bool;
+// pub mod scratch {
+//     use crate::core::Operation;
+//     use crate::dom_carrier_trait::{AllDomain, VectorDomain, IntervalDomain};
+//     use crate::data::{Data, Form};
+//     use std::ops::Bound;
+//
+//     Forms
+//         Element
+//         (Element, Data)
+//         Vec<Element>
+//         Map<Element>
+//     clamp: Vec<All<PartialOrd>> -> Vec<Interval<PartialOrd>>
+//     partition: Vec<All> -> Vec<All>
+//     sample: Vec<All> -> Vec<All>
+//     select: Map<String, Vec<All>> -> Map<String, Vec<All>>
+//     sum: Vec<All<Sum>> -> All<Sum>
+//     count: Vec<String> -> Map<String, Int>
+//     row_sum: Map<(String1, Vec<String>), (String2, Vec<Sum>)> -> Map<(String1, Vec<String>), (String2, Vec<Sum>)>
+//     row_op: Map<(String, Vec<Any)>> -> Map<(String, Vec<Any>)>
+//
+//     fn clamp<T: PartialOrd + Copy>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
+//         fn clamp1<T: PartialOrd>(lower: T, upper: T, x: T) -> T {
+//             if x < lower {
+//                 lower
+//             } else if x > upper {
+//                 upper
+//             } else {
+//                 x
+//             }
+//         }
+//         x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
+//
+//     }
+//
+//     pub fn make_clamp<T: 'static + Form + Clone>(lower: T, upper: T) -> Operation<Vec<T>, Vec<T>> where
+//         T: 'static + Form + Copy + PartialEq + PartialOrd {
+//         let _input_domain = VectorDomain::new(AllDomain::<T>::new());
+//         let _output_domain = VectorDomain::new(Box::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper))));
+//         let function = move |arg: &Data| -> Data {
+//             let form: &Vec<T> = arg.as_form();
+//             let ret = clamp(lower, upper, form);
+//             Data::new(ret)
+//         };
+//         Operation::new(Box::new(function))
+//     }
+//
+//
+// }
 
-    use super::*;
 
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_identity() -> *mut Operation {
-        let operation = make_identity();
-        ffi_utils::into_raw(operation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_lines() -> *mut Operation {
-        let operation = make_split_lines();
-        ffi_utils::into_raw(operation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut Operation {
-        // TODO: Handle NULL for Option.
-        let separator = Some(ffi_utils::to_str(separator));
-        let operation = make_split_records(separator);
-        ffi_utils::into_raw(operation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_dataframe(separator: *const c_char, impute: c_bool) -> *mut Operation {
-        // TODO: Handle NULL for Option.
-        let separator = Some(ffi_utils::to_str(separator));
-        let impute = ffi_utils::as_bool(impute);
-        // FIXME: Hardwired generics.
-        let operation = make_parse_dataframe::<String, i32, f64, String, String, String, String, String, String, String>(separator, impute);
-        ffi_utils::into_raw(operation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__bootstrap() -> *const c_char {
-        let spec =
-r#"{
-    "functions": [
-        { "name": "make_identity", "ret": "void *" },
-        { "name": "make_split_lines", "ret": "void *" },
-        { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
-        { "name": "make_parse_dataframe", "args": [ ["const char *", "separator"], ["bool", "impute"] ], "ret": "void *" }
-    ]
-}"#;
-        ffi_utils::bootstrap(spec)
-    }
-
-}
+// mod ffi {
+//     use std::os::raw::{c_char, c_void};
+//
+//     use crate::ffi_utils;
+//     use crate::ffi_utils::c_bool;
+//
+//     use super::*;
+//
+//     #[no_mangle]
+//     pub extern "C" fn opendp_ops__make_identity() -> *mut c_void {
+//         let operation = make_identity();
+//         ffi_utils::into_raw(operation).cast()
+//     }
+//
+//     #[no_mangle]
+//     pub extern "C" fn opendp_ops__make_split_lines() -> *mut c_void {
+//         let operation = make_split_lines();
+//         ffi_utils::into_raw(operation).cast()
+//     }
+//
+//     #[no_mangle]
+//     pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut c_void {
+//         // TODO: Handle NULL for Option.
+//         let separator = Some(ffi_utils::to_str(separator));
+//         let operation = make_split_records(separator);
+//         ffi_utils::into_raw(operation).cast()
+//     }
+//
+//     #[no_mangle]
+//     pub extern "C" fn opendp_ops__make_parse_dataframe(separator: *const c_char, impute: c_bool) -> *mut c_void {
+//         // TODO: Handle NULL for Option.
+//         let separator = Some(ffi_utils::to_str(separator));
+//         let impute = ffi_utils::as_bool(impute);
+//         // FIXME: Hardwired generics.
+//         let operation = make_parse_dataframe::<String, i32, f64, String, String, String, String, String, String, String>(separator, impute);
+//         ffi_utils::into_raw(operation).cast()
+//     }
+//
+//     #[no_mangle]
+//     pub extern "C" fn opendp_ops__bootstrap() -> *const c_char {
+//         let spec =
+// r#"{
+//     "functions": [
+//         { "name": "make_identity", "ret": "void *" },
+//         { "name": "make_split_lines", "ret": "void *" },
+//         { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
+//         { "name": "make_parse_dataframe", "args": [ ["const char *", "separator"], ["bool", "impute"] ], "ret": "void *" }
+//     ]
+// }"#;
+//         ffi_utils::bootstrap(spec)
+//     }
+//
+// }
 
 
 #[cfg(test)]

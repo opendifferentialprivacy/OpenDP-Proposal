@@ -4,6 +4,12 @@ use std::fmt::Debug;
 use std::convert::TryFrom;
 
 
+pub trait TraitObject {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+    fn as_any(&self) -> &dyn Any;
+}
+
+
 pub trait Primitive: Debug {}
 impl Primitive for i8 {}
 impl Primitive for i16 {}
