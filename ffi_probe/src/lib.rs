@@ -1,9 +1,10 @@
 pub mod core;
 pub mod data;
-pub mod ops;
 pub mod dom_carrier_no_trait;
 pub mod dom_carrier_trait;
 pub mod dom_no_carrier;
+pub mod mono;
+pub mod ops;
 
 
 pub(crate) mod ffi_utils {
