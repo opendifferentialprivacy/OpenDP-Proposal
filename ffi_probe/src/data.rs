@@ -1,7 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::convert::TryFrom;
 
 
 pub trait TraitObject {
@@ -10,19 +9,20 @@ pub trait TraitObject {
 }
 
 
-pub trait Primitive: Debug {}
-impl Primitive for i8 {}
-impl Primitive for i16 {}
-impl Primitive for i32 {}
-impl Primitive for i64 {}
-impl Primitive for u8 {}
-impl Primitive for u16 {}
-impl Primitive for u32 {}
-impl Primitive for u64 {}
-impl Primitive for f32 {}
-impl Primitive for f64 {}
-impl Primitive for bool {}
-impl Primitive for String {}
+pub trait Element: Debug {}
+impl Element for i8 {}
+impl Element for i16 {}
+impl Element for i32 {}
+impl Element for i64 {}
+impl Element for u8 {}
+impl Element for u16 {}
+impl Element for u32 {}
+impl Element for u64 {}
+impl Element for f32 {}
+impl Element for f64 {}
+impl Element for bool {}
+impl Element for String {}
+impl Element for Data {}
 
 pub trait Form: Debug {
     // Not sure if we need into_any() (which consumes the Form), keeping it for now.
@@ -33,132 +33,15 @@ pub trait Form: Debug {
 }
 
 impl<T> Form for T where
-    T: 'static + Primitive + Clone + PartialEq {
+    T: 'static + Element + Clone + PartialEq {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
     fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
     fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
 }
 
-impl<T0> Form for (T0,) where
-    T0: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1> Form for (T0, T1) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2> Form for (T0, T1, T2) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3> Form for (T0, T1, T2, T3) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4> Form for (T0, T1, T2, T3, T4) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4, T5> Form for (T0, T1, T2, T3, T4, T5) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq,
-    T5: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6> Form for (T0, T1, T2, T3, T4, T5, T6) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq,
-    T5: 'static + Form + Clone + PartialEq,
-    T6: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7> Form for (T0, T1, T2, T3, T4, T5, T6, T7) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq,
-    T5: 'static + Form + Clone + PartialEq,
-    T6: 'static + Form + Clone + PartialEq,
-    T7: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8> Form for (T0, T1, T2, T3, T4, T5, T6, T7, T8) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq,
-    T5: 'static + Form + Clone + PartialEq,
-    T6: 'static + Form + Clone + PartialEq,
-    T7: 'static + Form + Clone + PartialEq,
-    T8: 'static + Form + Clone + PartialEq {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> Form for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) where
-    T0: 'static + Form + Clone + PartialEq,
-    T1: 'static + Form + Clone + PartialEq,
-    T2: 'static + Form + Clone + PartialEq,
-    T3: 'static + Form + Clone + PartialEq,
-    T4: 'static + Form + Clone + PartialEq,
-    T5: 'static + Form + Clone + PartialEq,
-    T6: 'static + Form + Clone + PartialEq,
-    T7: 'static + Form + Clone + PartialEq,
-    T8: 'static + Form + Clone + PartialEq,
-    T9: 'static + Form + Clone + PartialEq {
+impl<T> Form for (T, Data) where
+    T: 'static + Element + Clone + PartialEq {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
     fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
@@ -166,7 +49,7 @@ impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> Form for (T0, T1, T2, T3, T4, T5, T
 }
 
 impl<T> Form for HashMap<String, T> where
-    T: 'static + Form + Clone + PartialEq {
+    T: 'static + Element + Clone + PartialEq {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
     fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
@@ -174,14 +57,14 @@ impl<T> Form for HashMap<String, T> where
 }
 
 impl<T> From<HashMap<String, T>> for Data
-    where T: 'static + Form + Clone + PartialEq {
+    where T: 'static + Element + Clone + PartialEq {
     fn from(src: HashMap<String, T>) -> Self {
         Data::new(src)
     }
 }
 
 impl<T> Form for Vec<T> where
-    T: 'static + Form + Clone + PartialEq {
+    T: 'static + Element + Clone + PartialEq {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
     fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
@@ -189,11 +72,12 @@ impl<T> Form for Vec<T> where
 }
 
 impl<T> From<Vec<T>> for Data
-    where T: 'static + Form + Clone + PartialEq {
+    where T: 'static + Element + Clone + PartialEq {
     fn from(src: Vec<T>) -> Self {
         Data::new(src)
     }
 }
+
 
 #[derive(Debug)]
 pub struct Data {
@@ -223,22 +107,6 @@ impl Clone for Data {
 impl PartialEq for Data {
     fn eq(&self, other: &Self) -> bool {
         self.form.eq(other.form.as_any())
-    }
-}
-
-impl Form for Data where {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn box_clone(&self) -> Box<dyn Form> { Box::new(self.clone()) }
-    fn eq(&self, other: &dyn Any) -> bool { other.downcast_ref::<Self>().map_or(false, |o| o == self) }
-}
-
-pub struct TryFromDataError;
-
-impl<'a, T: 'static> TryFrom<&'a Data> for &'a Vec<T> {
-    type Error = TryFromDataError;
-    fn try_from(src: &'a Data) -> Result<Self, Self::Error> {
-        src.form.as_any().downcast_ref().ok_or(TryFromDataError)
     }
 }
 
@@ -290,52 +158,40 @@ r#"{
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::fmt::Debug;
 
     use super::*;
 
     #[test]
     fn test_primitive() {
         let form = 99.9;
-        test_round_trip_primitive(form);
+        test_round_trip(form);
     }
 
     #[test]
     fn test_tuple() {
-        let form = (1, 2, 3);
-        test_round_trip_tuple(form);
+        let form = (1, Data::new(2.2));
+        test_round_trip(form);
     }
 
     #[test]
     fn test_map() {
         let form: HashMap<_, _> = vec![("foo".to_owned(), 1), ("bar".to_owned(), 2)].into_iter().collect();
-        test_round_trip_hashmap(form);
+        test_round_trip(form);
     }
 
     #[test]
     fn test_vec() {
         let form = vec![1, 2, 3];
-        test_round_trip_vec(form);
+        test_round_trip(form);
     }
 
     #[test]
-    fn test_nested_form() {
+    fn test_nested() {
         let form = (
-            (1, 2, 3),
-            vec![("ant".to_owned(), 1.1), ("bat".to_owned(), 2.2), ("cat".to_owned(), 3.3)].into_iter().collect::<HashMap<String, _>>(),
-            vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()],
-        );
-        test_round_trip_tuple(form);
-    }
-
-    #[test]
-    fn test_nested_data() {
-        let form = (
-            Data::new((1, 2, 3)),
-            Data::new(vec![("ant".to_owned(), 1.1), ("bat".to_owned(), 2.2), ("cat".to_owned(), 3.3)].into_iter().collect::<HashMap<String, _>>()),
+            99,
             Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]),
         );
-        test_round_trip_tuple(form);
+        test_round_trip(form);
     }
 
     #[test]
@@ -343,30 +199,12 @@ mod tests {
     fn test_bogus() {
         let form = (Data::new(vec![1, 2, 3]), Data::new(99.9));
         let data = Data::new(form);
-        let _retrieved: (f64, f64) = data.into_form();
+        let _retrieved: Vec<String> = data.into_form();
     }
 
-    fn test_round_trip_primitive<T: 'static + Primitive + Clone + PartialEq + Debug>(form: T) {
-        let data = Data::new(form.clone());
+    fn test_round_trip<T: 'static + Form + PartialEq>(form: T) {
+        let data = Data { form: form.box_clone() };
         let retrieved: &T = data.as_form();
-        assert_eq!(&form, retrieved);
-    }
-
-    fn test_round_trip_tuple<T0: 'static + Form + Clone + PartialEq, T1: 'static + Form + Form + Clone + PartialEq, T2: 'static + Form + Form + Clone + PartialEq>(form: (T0, T1, T2)) {
-        let data = Data { form: form.box_clone() };
-        let retrieved: &(T0, T1, T2) = data.as_form();
-        assert_eq!(&form, retrieved);
-    }
-
-    fn test_round_trip_hashmap<T: 'static + Form + Clone + PartialEq>(form: HashMap<String, T>) {
-        let data = Data { form: form.box_clone() };
-        let retrieved: &HashMap<String, T> = data.as_form();
-        assert_eq!(&form, retrieved);
-    }
-
-    fn test_round_trip_vec<T: 'static + Form + Clone + PartialEq>(form: Vec<T>) {
-        let data = Data { form: form.box_clone() };
-        let retrieved: &Vec<T> = data.as_form();
         assert_eq!(&form, retrieved);
     }
 

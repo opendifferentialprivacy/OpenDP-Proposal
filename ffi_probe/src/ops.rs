@@ -5,7 +5,7 @@ use std::iter;
 use std::str::FromStr;
 
 use crate::core::Operation;
-use crate::data::{Data, Form};
+use crate::data::{Data, Form, Element};
 
 pub fn make_identity<T: 'static + Form + Clone>() -> Operation<T, T> {
     let function = |arg: &Data| -> Data {
@@ -65,13 +65,14 @@ fn split_records<'a>(separator: Option<&str>, lines: &Vec<&'a str>) -> Vec<Vec<&
     cols
 }
 
-pub fn make_split_records(separator: Option<&str>) -> Operation<Vec<String>, Vec<Vec<String>>> {
+pub fn make_split_records(separator: Option<&str>) -> Operation<Vec<String>, Vec<Data>> {
     let separator = separator.map(ToOwned::to_owned);
     let function = move |arg: &Data| -> Data {
         let form: &Vec<String> = arg.as_form();
         let form = vec_string_to_str(form);
         let ret = split_records(separator.as_deref(), &form);
         let ret: Vec<Vec<String>> = vec_vec_str_to_string(ret);
+        let ret: Vec<Data> = ret.into_iter().map(Data::new).collect();
         Data::new(ret)
     };
     Operation::new(Box::new(function))
@@ -88,7 +89,7 @@ fn parse_col<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
 }
 
 pub fn make_parse_col<T>(default_on_error: bool) -> Operation<Vec<String>, Vec<T>> where
-    T: 'static + Form + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let function = move |arg: &Data| -> Data {
         let form: &Vec<String> = arg.as_form();
         let form = vec_string_to_str(form);
@@ -100,14 +101,13 @@ pub fn make_parse_col<T>(default_on_error: bool) -> Operation<Vec<String>, Vec<T
 
 pub type DataFrame = HashMap<String, Data>;
 
-pub fn create_dataframe(cols: Vec<Vec<&str>>) -> DataFrame {
-    cols.into_iter().enumerate().map(|(k, v)| (k.to_string(), vec_str_to_string(v).into())).collect()
+pub fn create_dataframe(cols: &Vec<Data>) -> DataFrame {
+    cols.into_iter().enumerate().map(|(k, v)| (k.to_string(), v.clone())).collect()
 }
 
-pub fn make_create_dataframe() -> Operation<Vec<Vec<String>>, DataFrame> {
+pub fn make_create_dataframe() -> Operation<Vec<Data>, DataFrame> {
     let function = |arg: &Data| -> Data {
-        let form: &Vec<Vec<String>> = arg.as_form();
-        let form = vec_vec_string_to_str(form);
+        let form: &Vec<Data> = arg.as_form();
         let ret = create_dataframe(form);
         Data::new(ret)
     };
@@ -120,31 +120,34 @@ pub fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
     df
 }
 
-pub fn make_replace_col(key: String) -> Operation<(DataFrame, Data), DataFrame> {
+pub fn make_replace_col(key: String) -> Operation<(Data, Data), DataFrame> {
     let function = move |arg: &Data| -> Data {
-        let form: &(DataFrame, Data) = arg.as_form();
-        let ret = replace_col(&key, &form.0, &form.1);
+        let form: &(Data, Data) = arg.as_form();
+        let df = form.0.as_form::<DataFrame>();
+        let col = &form.1;
+        let ret = replace_col(&key, df, col);
         Data::new(ret)
     };
     Operation::new(Box::new(function))
 }
 
 pub fn parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option<&str>, impute: bool, s: &str) -> DataFrame where
-    T0: 'static + Form + Clone + PartialEq + FromStr + Default, T0::Err: Debug,
-    T1: 'static + Form + Clone + PartialEq + FromStr + Default, T1::Err: Debug,
-    T2: 'static + Form + Clone + PartialEq + FromStr + Default, T2::Err: Debug,
-    T3: 'static + Form + Clone + PartialEq + FromStr + Default, T3::Err: Debug,
-    T4: 'static + Form + Clone + PartialEq + FromStr + Default, T4::Err: Debug,
-    T5: 'static + Form + Clone + PartialEq + FromStr + Default, T5::Err: Debug,
-    T6: 'static + Form + Clone + PartialEq + FromStr + Default, T6::Err: Debug,
-    T7: 'static + Form + Clone + PartialEq + FromStr + Default, T7::Err: Debug,
-    T8: 'static + Form + Clone + PartialEq + FromStr + Default, T8::Err: Debug,
-    T9: 'static + Form + Clone + PartialEq + FromStr + Default, T9::Err: Debug {
+    T0: 'static + Element + Clone + PartialEq + FromStr + Default, T0::Err: Debug,
+    T1: 'static + Element + Clone + PartialEq + FromStr + Default, T1::Err: Debug,
+    T2: 'static + Element + Clone + PartialEq + FromStr + Default, T2::Err: Debug,
+    T3: 'static + Element + Clone + PartialEq + FromStr + Default, T3::Err: Debug,
+    T4: 'static + Element + Clone + PartialEq + FromStr + Default, T4::Err: Debug,
+    T5: 'static + Element + Clone + PartialEq + FromStr + Default, T5::Err: Debug,
+    T6: 'static + Element + Clone + PartialEq + FromStr + Default, T6::Err: Debug,
+    T7: 'static + Element + Clone + PartialEq + FromStr + Default, T7::Err: Debug,
+    T8: 'static + Element + Clone + PartialEq + FromStr + Default, T8::Err: Debug,
+    T9: 'static + Element + Clone + PartialEq + FromStr + Default, T9::Err: Debug {
     let lines = split_lines(s);
     let cols = split_records(separator, &lines);
-    let df = create_dataframe(cols);
+    let cols = cols.into_iter().map(|e| Data::new(vec_str_to_string(e))).collect();
+    let df = create_dataframe(&cols);
     fn parse_and_replace<T>(df: &DataFrame, impute: bool, key: &str) -> DataFrame where
-        T: 'static + Form + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+        T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
         let type_id = TypeId::of::<T>();
         if type_id != TypeId::of::<()>() && type_id != TypeId::of::<String>() {
             let col = df.get(key).unwrap();
@@ -170,16 +173,16 @@ pub fn parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option
 }
 
 pub fn make_parse_dataframe<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(separator: Option<&str>, impute: bool) -> Operation<String, DataFrame> where
-    T0: 'static + Form + Clone + PartialEq + FromStr + Default, T0::Err: Debug,
-    T1: 'static + Form + Clone + PartialEq + FromStr + Default, T1::Err: Debug,
-    T2: 'static + Form + Clone + PartialEq + FromStr + Default, T2::Err: Debug,
-    T3: 'static + Form + Clone + PartialEq + FromStr + Default, T3::Err: Debug,
-    T4: 'static + Form + Clone + PartialEq + FromStr + Default, T4::Err: Debug,
-    T5: 'static + Form + Clone + PartialEq + FromStr + Default, T5::Err: Debug,
-    T6: 'static + Form + Clone + PartialEq + FromStr + Default, T6::Err: Debug,
-    T7: 'static + Form + Clone + PartialEq + FromStr + Default, T7::Err: Debug,
-    T8: 'static + Form + Clone + PartialEq + FromStr + Default, T8::Err: Debug,
-    T9: 'static + Form + Clone + PartialEq + FromStr + Default, T9::Err: Debug {
+    T0: 'static + Element + Clone + PartialEq + FromStr + Default, T0::Err: Debug,
+    T1: 'static + Element + Clone + PartialEq + FromStr + Default, T1::Err: Debug,
+    T2: 'static + Element + Clone + PartialEq + FromStr + Default, T2::Err: Debug,
+    T3: 'static + Element + Clone + PartialEq + FromStr + Default, T3::Err: Debug,
+    T4: 'static + Element + Clone + PartialEq + FromStr + Default, T4::Err: Debug,
+    T5: 'static + Element + Clone + PartialEq + FromStr + Default, T5::Err: Debug,
+    T6: 'static + Element + Clone + PartialEq + FromStr + Default, T6::Err: Debug,
+    T7: 'static + Element + Clone + PartialEq + FromStr + Default, T7::Err: Debug,
+    T8: 'static + Element + Clone + PartialEq + FromStr + Default, T8::Err: Debug,
+    T9: 'static + Element + Clone + PartialEq + FromStr + Default, T9::Err: Debug {
     let separator = separator.map(ToOwned::to_owned);
     let function = move |arg: &Data| -> Data {
         let form: &String = arg.as_form();
@@ -316,10 +319,10 @@ mod tests {
         let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
         let arg = Data::new(arg);
         let ret = operation.invoke(&arg);
-        let ret: Vec<Vec<String>> = ret.into_form();
+        let ret: Vec<Data> = ret.into_form();
         assert_eq!(ret, vec![
-            vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()],
-            vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()],
+            Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]),
+            Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]),
         ]);
     }
 
@@ -327,8 +330,8 @@ mod tests {
     fn test_make_create_dataframe() {
         let operation = make_create_dataframe();
         let arg = vec![
-            vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()],
-            vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()],
+            Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]),
+            Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]),
         ];
         let arg = Data::new(arg);
         let ret = operation.invoke(&arg);

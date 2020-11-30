@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::ops::Bound;
 
 use crate::core::Domain;
-use crate::data::{Form, TraitObject};
+use crate::data::{Form, TraitObject, Element};
 
 
 #[derive(Clone, PartialEq)]
@@ -45,7 +45,7 @@ impl<T: 'static + Clone> TraitObject for IntervalDomain<T> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
-impl<T: 'static + Form + Clone + PartialOrd> Domain for IntervalDomain<T> {
+impl<T: 'static + Element + Clone + PartialOrd> Domain for IntervalDomain<T> {
     type Carrier = T;
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
@@ -71,21 +71,21 @@ pub struct VectorDomain<T> {
     element_domain: Box<dyn Domain<Carrier=T>>,
     _marker: PhantomData<T>,
 }
-impl<T: 'static + Form> VectorDomain<T> {
+impl<T: 'static + Element> VectorDomain<T> {
     pub fn new(element_domain: Box<dyn Domain<Carrier=T>>) -> VectorDomain<T> {
         VectorDomain { element_domain, _marker: PhantomData }
     }
 }
-impl<T: 'static + Form> TraitObject for VectorDomain<T> {
+impl<T: 'static + Element> TraitObject for VectorDomain<T> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
-impl<T: 'static + Form> Clone for VectorDomain<T> {
+impl<T: 'static + Element + Clone + PartialEq> Clone for VectorDomain<T> {
     fn clone(&self) -> Self {
         VectorDomain::new(self.element_domain.box_clone())
     }
 }
-impl<T: 'static + Form + Clone + PartialEq> Domain for VectorDomain<T> {
+impl<T: 'static + Element + Clone + PartialEq> Domain for VectorDomain<T> {
     type Carrier = Vec<T>;
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
