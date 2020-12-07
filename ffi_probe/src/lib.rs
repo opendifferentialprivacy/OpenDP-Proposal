@@ -1,6 +1,7 @@
 pub mod core;
 pub mod data;
 pub mod dom;
+#[macro_use]
 pub mod mono;
 pub mod ops;
 
@@ -13,6 +14,10 @@ pub(crate) mod ffi_utils {
     pub fn into_raw<T>(o: T) -> *mut T {
         Box::into_raw(Box::<T>::new(o))
     }
+
+    // pub fn as_raw<T>(o: &T) -> *mut T {
+    //     o as *mut T
+    // }
 
     pub fn into_owned<T>(p: *mut T) -> T {
         assert!(!p.is_null());
@@ -45,6 +50,14 @@ pub(crate) mod ffi_utils {
         s.to_str().expect("Bad C string")
     }
 
+    pub fn to_option_str<'a>(p: *const c_char) -> Option<&'a str> {
+        if !p.is_null() {
+            Some(to_str(p))
+        } else {
+            None
+        }
+    }
+
     pub fn bootstrap(spec: &str) -> *const c_char {
         // FIXME: Leaks string.
         into_c_char_p(spec.to_owned())
@@ -53,7 +66,7 @@ pub(crate) mod ffi_utils {
     #[allow(non_camel_case_types)]
     pub type c_bool = u8;  // PLATFORM DEPENDENT!!!
 
-    pub fn as_bool(b: c_bool) -> bool {
+    pub fn to_bool(b: c_bool) -> bool {
         if b != 0 { true } else { false }
     }
 

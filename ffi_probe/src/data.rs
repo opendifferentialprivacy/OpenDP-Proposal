@@ -10,18 +10,15 @@ pub trait TraitObject {
 
 
 pub trait Element: Debug {}
-impl Element for i8 {}
-impl Element for i16 {}
-impl Element for i32 {}
-impl Element for i64 {}
-impl Element for u8 {}
-impl Element for u16 {}
 impl Element for u32 {}
 impl Element for u64 {}
+impl Element for i32 {}
+impl Element for i64 {}
 impl Element for f32 {}
 impl Element for f64 {}
 impl Element for bool {}
 impl Element for String {}
+impl Element for u8 {}
 impl Element for Data {}
 
 pub trait Form: Debug {

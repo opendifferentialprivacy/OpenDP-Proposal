@@ -1,11 +1,7 @@
-use std::any::type_name;
+use std::any::{type_name, TypeId};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::ffi::c_void;
 use std::fmt::Debug;
-
-use crate::ffi_utils;
-
 
 #[derive(Debug)]
 pub struct TypeError;
@@ -14,8 +10,15 @@ pub struct TypeError;
 pub struct Type(String);
 
 impl Type {
-    pub fn new<T>() -> Type {
-        Type(format!("{}", type_name::<T>()))
+    pub fn new<T: 'static>() -> Type {
+        // TODO: Better generation of type descriptors.
+        // Special case String, otherwise we get "alloc::string::String".
+        let descriptor = if TypeId::of::<T>() == TypeId::of::<String>() {
+            "String"
+        } else {
+            type_name::<T>()
+        };
+        Type(format!("{}", descriptor))
     }
     pub fn descriptor(&self) -> String {
         self.0.clone()
@@ -58,7 +61,7 @@ impl TryFrom<&str> for TypeArgs {
 }
 
 
-struct Dispatcher<T> {
+pub struct Dispatcher<T> {
     table: HashMap<TypeArgs, T>,
 }
 impl<T: 'static> Dispatcher<T> {
@@ -76,7 +79,7 @@ impl<T: 'static> Dispatcher<T> {
 
 macro_rules! type_args {
     ($($type:ty),+) => {
-        TypeArgs::new(vec![$(Type::new::<$type>()),+])
+        crate::mono::TypeArgs::new(vec![$(crate::mono::Type::new::<$type>()),+])
     }
 }
 
@@ -89,7 +92,12 @@ macro_rules! register {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::c_void;
+
+    use crate::ffi_utils;
+
     use super::*;
+
 
     #[test]
     fn test_type() {
