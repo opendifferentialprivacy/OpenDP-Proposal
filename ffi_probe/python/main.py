@@ -122,17 +122,18 @@ def main():
     select_1 = opendp.ops.make_select_column(b"<i32>", parse_dataframe, b"1")
     clamp_1 = opendp.ops.make_clamp(b"<i32>", select_1, i32_p(0), i32_p(10))
     bounded_sum_1 = opendp.ops.make_bounded_sum(b"<i32>", clamp_1)
-    chain_1 = make_chain(opendp, bounded_sum_1, clamp_1, select_1)
+    base_laplace_1 = opendp.ops.make_base_laplace(b"<i32>", bounded_sum_1, 1)
+    noisy_sum_1 = make_chain(opendp, base_laplace_1, bounded_sum_1, clamp_1, select_1)
 
     # Noisy sum, col 2
     select_2 = opendp.ops.make_select_column(b"<f64>", parse_dataframe, b"2")
     clamp_2 = opendp.ops.make_clamp(b"<f64>", select_2, f64_p(0.0), f64_p(10.0))
     bounded_sum_2 = opendp.ops.make_bounded_sum(b"<f64>", clamp_2)
     base_laplace_2 = opendp.ops.make_base_laplace(b"<f64>", bounded_sum_2, 1.0)
-    chain_2 = make_chain(opendp, base_laplace_2, bounded_sum_2, clamp_2, select_2)
+    noisy_sum_2 = make_chain(opendp, base_laplace_2, bounded_sum_2, clamp_2, select_2)
 
     # Compose & chain
-    composition = opendp.core.make_composition(chain_1, chain_2)
+    composition = opendp.core.make_composition(noisy_sum_1, noisy_sum_2)
     everything = make_chain(opendp, composition, parse_dataframe)
 
     # Do it!!!
