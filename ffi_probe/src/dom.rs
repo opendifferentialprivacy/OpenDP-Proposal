@@ -47,6 +47,9 @@ impl DataDomain {
     pub fn new(form_domain: impl Domain + 'static) -> DataDomain {
         DataDomain { form_domain: Box::new(form_domain) }
     }
+    pub fn new_box(form_domain: Box<dyn Domain>) -> DataDomain {
+        DataDomain { form_domain: form_domain }
+    }
 }
 impl TraitObject for DataDomain {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }

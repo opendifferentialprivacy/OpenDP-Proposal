@@ -89,6 +89,12 @@ macro_rules! register {
     }
 }
 
+macro_rules! register_multi {
+    ($dispatcher:ident, $function:ident, [$($type:ty),+]) => {
+        $(register!($dispatcher, $function, <$type>);)+
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
