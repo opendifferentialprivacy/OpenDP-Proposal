@@ -83,6 +83,29 @@ pub fn make_split_lines() -> Operation {
     Operation::new(input_domain, output_domain, function)
 }
 
+fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
+    T: FromStr + Default,
+    T::Err: Debug {
+    if default_on_error {
+        col.into_iter().map(|e| e.parse().unwrap_or_else(|_| T::default())).collect()
+    } else {
+        col.into_iter().map(|e| e.parse().unwrap()).collect()
+    }
+}
+
+pub fn make_parse_series<T>(impute: bool) -> Operation where
+    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+    let input_domain = VectorDomain::<String>::new_all();
+    let output_domain = VectorDomain::<T>::new_all();
+    let function = move |arg: &Data| -> Data {
+        let form: &Vec<String> = arg.as_form();
+        let form = vec_string_to_str(form);
+        let ret: Vec<T> = parse_series(&form, impute);
+        Data::new(ret)
+    };
+    Operation::new(input_domain, output_domain, function)
+}
+
 fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
     fn split<'a>(line: &'a str, separator: &str) -> Vec<&'a str> {
         line.split(separator).into_iter().map(|e| e.trim()).collect()
@@ -166,29 +189,6 @@ pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Operat
     let function = move |arg: &Data| -> Data {
         let arg: &String = arg.as_form();
         let ret = split_dataframe(&separator, col_count, &arg);
-        Data::new(ret)
-    };
-    Operation::new(input_domain, output_domain, function)
-}
-
-fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
-    T: FromStr + Default,
-    T::Err: Debug {
-    if default_on_error {
-        col.into_iter().map(|e| e.parse().unwrap_or_else(|_| T::default())).collect()
-    } else {
-        col.into_iter().map(|e| e.parse().unwrap()).collect()
-    }
-}
-
-pub fn make_parse_series<T>(default_on_error: bool) -> Operation where
-    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-    let input_domain = VectorDomain::<String>::new_all();
-    let output_domain = VectorDomain::<T>::new_all();
-    let function = move |arg: &Data| -> Data {
-        let form: &Vec<String> = arg.as_form();
-        let form = vec_string_to_str(form);
-        let ret: Vec<T> = parse_series(&form, default_on_error);
         Data::new(ret)
     };
     Operation::new(input_domain, output_domain, function)
@@ -311,6 +311,22 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_parse_series(selector: *const c_char, impute: c_bool) -> *mut Operation {
+        fn monomorphize<T>() -> Box<dyn Fn(bool) -> Operation> where
+            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+            Box::new(|impute| make_parse_series::<T>(impute))
+        }
+        // TODO: Put dispatcher in lazy_static.
+        let mut dispatcher: Dispatcher<Box<_>> = Dispatcher::new();
+        register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, u8]);
+
+        let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
+        let impute = ffi_utils::to_bool(impute);
+        let operation = dispatcher.get(&selector).unwrap()(impute);
+        ffi_utils::into_raw(operation)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut Operation {
         let separator = ffi_utils::to_option_str(separator);
         let operation = make_split_records(separator);
@@ -340,7 +356,7 @@ mod ffi {
         }
         // TODO: Put dispatcher in lazy_static.
         let mut dispatcher: Dispatcher<Box<_>> = Dispatcher::new();
-        register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, String, u8]);
+        register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
         let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
@@ -428,6 +444,7 @@ r#"{
     "functions": [
         { "name": "make_identity", "ret": "void *" },
         { "name": "make_split_lines", "ret": "void *" },
+        { "name": "make_parse_series", "args": [ ["const char *", "selector"], ["bool", "impute"] ], "ret": "void *" },
         { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
         { "name": "make_create_dataframe", "args": [ ["unsigned int", "col_count"] ], "ret": "void *" },
         { "name": "make_split_dataframe", "args": [ ["const char *", "separator"], ["unsigned int", "col_count"] ], "ret": "void *" },
