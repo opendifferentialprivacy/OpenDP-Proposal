@@ -7,17 +7,17 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Operation};
+use crate::core::{Domain, Transformation, Measurement};
 use crate::data::{Data, Element, Form};
 use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain};
 
-pub fn make_identity<T: 'static + Form + Clone>() -> Operation {
+pub fn make_identity<T: 'static + Form + Clone>() -> Transformation {
     let input_domain = AllDomain::<T>::new();
     let output_domain = AllDomain::<T>::new();
     let function = |arg: &Data| -> Data {
         arg.clone()
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
@@ -28,7 +28,7 @@ fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
 
 }
 
-pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Operation where
+pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Transformation where
     T: 'static + Element + Copy + PartialEq + PartialOrd {
     let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
     let input_domain = input_domain.clone();
@@ -38,10 +38,10 @@ pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Operation
         let ret = clamp(lower, upper, arg);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Operation where
+pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Transformation where
     T: 'static + Element + Clone + PartialEq + Sum<T> {
     let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
     let element_domain = &input_domain.element_domain;
@@ -56,7 +56,7 @@ pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Operation where
         let ret: T = arg.into_iter().sum();
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn vec_string_to_str(src: &Vec<String>) -> Vec<&str> {
@@ -71,7 +71,7 @@ fn split_lines(s: &str) -> Vec<&str> {
     s.lines().collect()
 }
 
-pub fn make_split_lines() -> Operation {
+pub fn make_split_lines() -> Transformation {
     let input_domain = AllDomain::<String>::new();
     let output_domain = VectorDomain::<String>::new_all();
     let function = |arg: &Data| -> Data {
@@ -80,7 +80,7 @@ pub fn make_split_lines() -> Operation {
         let ret = vec_str_to_string(ret);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
@@ -93,7 +93,7 @@ fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     }
 }
 
-pub fn make_parse_series<T>(impute: bool) -> Operation where
+pub fn make_parse_series<T>(impute: bool) -> Transformation where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let input_domain = VectorDomain::<String>::new_all();
     let output_domain = VectorDomain::<T>::new_all();
@@ -103,7 +103,7 @@ pub fn make_parse_series<T>(impute: bool) -> Operation where
         let ret: Vec<T> = parse_series(&form, impute);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
@@ -113,7 +113,7 @@ fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>>
     lines.into_iter().map(|e| split(e, separator)).collect()
 }
 
-pub fn make_split_records(separator: Option<&str>) -> Operation {
+pub fn make_split_records(separator: Option<&str>) -> Transformation {
     let separator = separator.unwrap_or(",").to_owned();
     let input_domain = VectorDomain::<String>::new_all();
     let output_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
@@ -125,7 +125,7 @@ pub fn make_split_records(separator: Option<&str>) -> Operation {
         let ret: Vec<Data> = ret.into_iter().map(Data::new).collect();
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn conform_records<'a>(len: usize, records: &Vec<Vec<&'a str>>) -> Vec<Vec<&'a str>> {
@@ -162,7 +162,7 @@ pub fn create_raw_dataframe_domain(col_count: usize) -> impl Domain {
     HeterogeneousMapDomain::new(element_domains)
 }
 
-pub fn make_create_dataframe(col_count: usize) -> Operation {
+pub fn make_create_dataframe(col_count: usize) -> Transformation {
     let input_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
     let output_domain = create_raw_dataframe_domain(col_count);
     let function = move |arg: &Data| -> Data {
@@ -172,7 +172,7 @@ pub fn make_create_dataframe(col_count: usize) -> Operation {
         let ret = create_dataframe(col_count, &arg);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame {
@@ -182,7 +182,7 @@ fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame 
     create_dataframe(col_count, &records)
 }
 
-pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Operation {
+pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transformation {
     let separator = separator.unwrap_or(",").to_owned();
     let input_domain = AllDomain::<String>::new();
     let output_domain = create_raw_dataframe_domain(col_count);
@@ -191,7 +191,7 @@ pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Operat
         let ret = split_dataframe(&separator, col_count, &arg);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
@@ -209,7 +209,7 @@ fn parse_column<T>(key: &str, impute: bool, df: &DataFrame) -> DataFrame where
     replace_col(key, &df, &col.into())
 }
 
-pub fn make_parse_column<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> Operation where
+pub fn make_parse_column<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> Transformation where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let key = key.to_owned();
     let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_parse_column()");
@@ -226,16 +226,16 @@ pub fn make_parse_column<T>(input_domain: &dyn Domain, key: &str, impute: bool) 
         let ret = parse_column::<T>(&key, impute, arg);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Operation where
+pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Transformation where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
     let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_select_column()");
     let column_domain = input_domain.element_domains.get(&key).expect("Bogus input_domain in make_select_column()");
     let column_domain = column_domain.as_any().downcast_ref::<DataDomain>().expect("Bogus input_domain in make_select_column()");
-    // It's a drag that we need a type argument to get column_domain out. Might want to change Operation::new() to take Box<dyn Domain> instead of impl Domain.
+    // It's a drag that we need a type argument to get column_domain out. Might want to change Transformation::new() to take Box<dyn Domain> instead of impl Domain.
     let column_domain = column_domain.form_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_select_column()");
     let input_domain = input_domain.clone();
     let output_domain = column_domain.clone();
@@ -246,7 +246,7 @@ pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Operation 
         let ret = ret.clone();
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
 fn laplace(sigma: f64) -> f64 {
@@ -265,7 +265,7 @@ impl AddNoise for i64 { fn add_noise(self, noise: f64) -> Self { (self as f64 + 
 impl AddNoise for f32 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 impl AddNoise for f64 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 
-pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Operation where
+pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Measurement where
     T: 'static + Element + Copy + PartialEq + AddNoise {
     let input_domain = input_domain.as_any().downcast_ref::<AllDomain<T>>().expect("Bogus input_domain in make_base_laplace()");
     let input_domain = input_domain.clone();
@@ -276,7 +276,7 @@ pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Operation 
         let ret = arg.add_noise(noise);
         Data::new(ret)
     };
-    Operation::new(input_domain, output_domain, function)
+    Measurement::new(input_domain, output_domain, function)
 }
 
 
@@ -291,8 +291,8 @@ mod ffi {
     use super::*;
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_identity(selector: *const c_char) -> *mut Operation {
-        fn monomorphize<T: 'static + Form + Clone>() -> Box<dyn Fn() -> Operation> {
+    pub extern "C" fn opendp_ops__make_identity(selector: *const c_char) -> *mut Transformation {
+        fn monomorphize<T: 'static + Form + Clone>() -> Box<dyn Fn() -> Transformation> {
             Box::new(|| make_identity::<T>())
         }
         // TODO: Put dispatcher in lazy_static.
@@ -300,19 +300,19 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, String, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let operation = dispatcher.get(&selector).unwrap()();
-        ffi_utils::into_raw(operation)
+        let transformation = dispatcher.get(&selector).unwrap()();
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_lines() -> *mut Operation {
-        let operation = make_split_lines();
-        ffi_utils::into_raw(operation)
+    pub extern "C" fn opendp_ops__make_split_lines() -> *mut Transformation {
+        let transformation = make_split_lines();
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_series(selector: *const c_char, impute: c_bool) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(bool) -> Operation> where
+    pub extern "C" fn opendp_ops__make_parse_series(selector: *const c_char, impute: c_bool) -> *mut Transformation {
+        fn monomorphize<T>() -> Box<dyn Fn(bool) -> Transformation> where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
             Box::new(|impute| make_parse_series::<T>(impute))
         }
@@ -322,35 +322,35 @@ mod ffi {
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
         let impute = ffi_utils::to_bool(impute);
-        let operation = dispatcher.get(&selector).unwrap()(impute);
-        ffi_utils::into_raw(operation)
+        let transformation = dispatcher.get(&selector).unwrap()(impute);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut Operation {
+    pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut Transformation {
         let separator = ffi_utils::to_option_str(separator);
-        let operation = make_split_records(separator);
-        ffi_utils::into_raw(operation)
+        let transformation = make_split_records(separator);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_create_dataframe(col_count: c_uint) -> *mut Operation {
+    pub extern "C" fn opendp_ops__make_create_dataframe(col_count: c_uint) -> *mut Transformation {
         let col_count = col_count as usize;
-        let operation = make_create_dataframe(col_count);
-        ffi_utils::into_raw(operation).cast()
+        let transformation = make_create_dataframe(col_count);
+        ffi_utils::into_raw(transformation).cast()
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_dataframe(separator: *const c_char, col_count: c_uint) -> *mut Operation {
+    pub extern "C" fn opendp_ops__make_split_dataframe(separator: *const c_char, col_count: c_uint) -> *mut Transformation {
         let separator = ffi_utils::to_option_str(separator);
         let col_count = col_count as usize;
-        let operation = make_split_dataframe(separator, col_count);
-        ffi_utils::into_raw(operation).cast()
+        let transformation = make_split_dataframe(separator, col_count);
+        ffi_utils::into_raw(transformation).cast()
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column(selector: *const c_char, input_operation: *const Operation, key: *const c_char, impute: c_bool) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, &str, bool) -> Operation> where
+    pub extern "C" fn opendp_ops__make_parse_column(selector: *const c_char, input_transformation: *const Transformation, key: *const c_char, impute: c_bool) -> *mut Transformation {
+        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, &str, bool) -> Transformation> where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
             Box::new(|input_domain, key, impute| make_parse_column::<T>(input_domain, key, impute))
         }
@@ -359,16 +359,16 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
+        let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
         let key = ffi_utils::to_str(key);
         let impute = ffi_utils::to_bool(impute);
-        let operation = dispatcher.get(&selector).unwrap()(input_domain, key, impute);
-        ffi_utils::into_raw(operation)
+        let transformation = dispatcher.get(&selector).unwrap()(input_domain, key, impute);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column(selector: *const c_char, input_operation: *const Operation, key: *const c_char) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, &str) -> Operation> where
+    pub extern "C" fn opendp_ops__make_select_column(selector: *const c_char, input_transformation: *const Transformation, key: *const c_char) -> *mut Transformation {
+        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, &str) -> Transformation> where
             T: 'static + Element + Clone + PartialEq {
             Box::new(|input_domain, key| make_select_column::<T>(input_domain, key))
         }
@@ -377,15 +377,15 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, String, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
+        let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
         let key = ffi_utils::to_str(key);
-        let operation = dispatcher.get(&selector).unwrap()(input_domain, key);
-        ffi_utils::into_raw(operation)
+        let transformation = dispatcher.get(&selector).unwrap()(input_domain, key);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp(selector: *const c_char, input_operation: *const Operation, lower: *const c_void, upper: *const c_void) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, *const c_void, *const c_void) -> Operation> where
+    pub extern "C" fn opendp_ops__make_clamp(selector: *const c_char, input_transformation: *const Transformation, lower: *const c_void, upper: *const c_void) -> *mut Transformation {
+        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, *const c_void, *const c_void) -> Transformation> where
             T: 'static + Element + Copy + PartialEq + PartialOrd {
             Box::new(|input_domain, lower, upper| {
                 let lower = ffi_utils::as_ref(lower as *const T).clone();
@@ -398,14 +398,14 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, bool, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
-        let operation = dispatcher.get(&selector).unwrap()(input_domain, lower, upper);
-        ffi_utils::into_raw(operation)
+        let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
+        let transformation = dispatcher.get(&selector).unwrap()(input_domain, lower, upper);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum(selector: *const c_char, input_operation: *const Operation) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain) -> Operation> where
+    pub extern "C" fn opendp_ops__make_bounded_sum(selector: *const c_char, input_transformation: *const Transformation) -> *mut Transformation {
+        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain) -> Transformation> where
             T: 'static + Element + Clone + PartialEq + Sum {
             Box::new(|input_domain| make_bounded_sum::<T>(input_domain))
         }
@@ -414,14 +414,14 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64, u8]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
-        let operation = dispatcher.get(&selector).unwrap()(input_domain);
-        ffi_utils::into_raw(operation)
+        let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
+        let transformation = dispatcher.get(&selector).unwrap()(input_domain);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace(selector: *const c_char, input_operation: *const Operation, sigma: f64) -> *mut Operation {
-        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, f64) -> Operation> where
+    pub extern "C" fn opendp_ops__make_base_laplace(selector: *const c_char, input_transformation: *const Transformation, sigma: f64) -> *mut Measurement {
+        fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, f64) -> Measurement> where
             T: 'static + Element + Copy + PartialEq + AddNoise {
             Box::new(|input_domain, sigma| {
                 make_base_laplace::<T>(input_domain, sigma)
@@ -432,9 +432,9 @@ mod ffi {
         register_multi!(dispatcher, monomorphize, [u32, u64, i32, i64, f32, f64]);
 
         let selector = ffi_utils::to_str(selector).try_into().expect("Bogus selector");
-        let input_domain = ffi_utils::as_ref(input_operation).output_domain.as_ref();
-        let operation = dispatcher.get(&selector).unwrap()(input_domain, sigma);
-        ffi_utils::into_raw(operation)
+        let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
+        let transformation = dispatcher.get(&selector).unwrap()(input_domain, sigma);
+        ffi_utils::into_raw(transformation)
     }
 
     #[no_mangle]
@@ -448,11 +448,11 @@ r#"{
         { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
         { "name": "make_create_dataframe", "args": [ ["unsigned int", "col_count"] ], "ret": "void *" },
         { "name": "make_split_dataframe", "args": [ ["const char *", "separator"], ["unsigned int", "col_count"] ], "ret": "void *" },
-        { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const void *", "input_operation"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
-        { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const void *", "input_operation"], ["const char *", "key"] ], "ret": "void *" },
-        { "name": "make_clamp", "args": [ ["const char *", "selector"], ["const void *", "input_operation"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-        { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["const void *", "input_operation"] ], "ret": "void *" },
-        { "name": "make_base_laplace", "args": [ ["const char *", "selector"], ["const void *", "input_operation"], ["double", "sigma"] ], "ret": "void *" }
+        { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
+        { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["const char *", "key"] ], "ret": "void *" },
+        { "name": "make_clamp", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
+        { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"] ], "ret": "void *" },
+        { "name": "make_base_laplace", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["double", "sigma"] ], "ret": "void *" }
     ]
 }"#;
         ffi_utils::bootstrap(spec)
@@ -463,26 +463,26 @@ r#"{
 
 #[cfg(test)]
 mod tests {
-    use crate::core::make_chain;
+    use crate::core::make_chain_tt;
 
     use super::*;
 
     #[test]
     fn test_make_split_lines() {
-        let operation = make_split_lines();
+        let transformation = make_split_lines();
         let arg = "ant\nbat\ncat\n".to_owned();
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: Vec<String> = ret.into_form();
         assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
     }
 
     #[test]
     fn test_make_split_records() {
-        let operation = make_split_records(None);
+        let transformation = make_split_records(None);
         let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: Vec<Data> = ret.into_form();
         assert_eq!(ret, vec![
             Data::new(vec!["ant".to_owned(), "foo".to_owned()]),
@@ -493,14 +493,14 @@ mod tests {
 
     #[test]
     fn test_make_create_dataframe() {
-        let operation = make_create_dataframe(2);
+        let transformation = make_create_dataframe(2);
         let arg = vec![
             Data::new(vec!["ant".to_owned(), "foo".to_owned()]),
             Data::new(vec!["bat".to_owned(), "bar".to_owned()]),
             Data::new(vec!["cat".to_owned(), "baz".to_owned()]),
         ];
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: DataFrame = ret.into_form();
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -511,10 +511,10 @@ mod tests {
 
     #[test]
     fn test_make_split_dataframe() {
-        let operation = make_split_dataframe(None, 2);
+        let transformation = make_split_dataframe(None, 2);
         let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: DataFrame = ret.into_form();
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -525,10 +525,10 @@ mod tests {
 
     #[test]
     fn test_make_parse_series() {
-        let operation = make_parse_series::<i32>(true);
+        let transformation = make_parse_series::<i32>(true);
         let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: Vec<i32> = ret.into_form();
         let expected = vec![1, 2, 3, 0];
         assert_eq!(ret, expected);
@@ -537,13 +537,13 @@ mod tests {
     #[test]
     fn test_make_parse_column() {
         let input_domain = create_raw_dataframe_domain(2);
-        let operation = make_parse_column::<i32>(&input_domain, "1", true);
+        let transformation = make_parse_column::<i32>(&input_domain, "1", true);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
         ].into_iter().collect();
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: DataFrame = ret.into_form();
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -555,16 +555,16 @@ mod tests {
     #[test]
     fn test_make_parse_columns() {
         let input_domain = create_raw_dataframe_domain(3);
-        let operation0 = make_parse_column::<i32>(&input_domain, "1", true);
-        let operation1 = make_parse_column::<f64>(operation0.output_domain.as_ref(), "2", true);
-        let operation = make_chain(operation1, operation0);
+        let transformation0 = make_parse_column::<i32>(&input_domain, "1", true);
+        let transformation1 = make_parse_column::<f64>(transformation0.output_domain.as_ref(), "2", true);
+        let transformation = make_chain_tt(transformation1, transformation0);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
             ("2".to_owned(), Data::new(vec!["1.1".to_owned(), "2.2".to_owned(), "3.3".to_owned()])),
         ].into_iter().collect();
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: DataFrame = ret.into_form();
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -577,13 +577,13 @@ mod tests {
     #[test]
     fn test_make_select_column() {
         let input_domain = create_raw_dataframe_domain(2);
-        let operation = make_select_column::<String>(&input_domain, "1");
+        let transformation = make_select_column::<String>(&input_domain, "1");
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
         ].into_iter().collect();
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: Vec<String> = ret.into_form();
         let expected = vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()];
         assert_eq!(ret, expected);
@@ -592,10 +592,10 @@ mod tests {
     #[test]
     fn test_make_clamp() {
         let input_domain = VectorDomain::<i32>::new_all();
-        let operation = make_clamp(&input_domain, 0, 10);
+        let transformation = make_clamp(&input_domain, 0, 10);
         let arg = vec![-10, -5, 0, 5, 10, 20];
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: Vec<i32> = ret.into_form();
         let expected = vec![0, 0, 0, 5, 10, 10];
         assert_eq!(ret, expected);
@@ -604,10 +604,10 @@ mod tests {
     #[test]
     fn test_make_bounded_sum() {
         let input_domain = VectorDomain::<i32>::new(IntervalDomain::<i32>::new(Bound::Included(0), Bound::Included(10)));
-        let operation = make_bounded_sum::<i32>(&input_domain);
+        let transformation = make_bounded_sum::<i32>(&input_domain);
         let arg = vec![1, 2, 3, 4, 5];
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = transformation.invoke(&arg);
         let ret: i32 = ret.into_form();
         let expected = 15;
         assert_eq!(ret, expected);
@@ -616,10 +616,10 @@ mod tests {
     #[test]
     fn test_make_base_laplace() {
         let input_domain = AllDomain::<f64>::new();
-        let operation = make_base_laplace::<f64>(&input_domain, 1.0);
+        let measurement = make_base_laplace::<f64>(&input_domain, 1.0);
         let arg = 0.0;
         let arg = Data::new(arg);
-        let ret = operation.invoke(&arg);
+        let ret = measurement.invoke(&arg);
         let _ret: f64 = ret.into_form();
         // TODO: Test for base_laplace
     }

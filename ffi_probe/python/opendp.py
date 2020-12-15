@@ -84,13 +84,13 @@ class OpenDP:
     def f64_p(self, f):
         return ctypes.byref(ctypes.c_double(f))
 
-    def make_chain_multi(self, *operations):
-        if not operations:
+    def make_chain_tt_multi(self, *transformations):
+        if not transformations:
             raise Exception
-        elif len(operations) == 1:
-            return operations[0]
+        elif len(transformations) == 1:
+            return transformations[0]
         else:
-            return self.make_chain_multi(*operations[:-2], self.core.make_chain(operations[-2], operations[-1]))
+            return self.make_chain_tt_multi(*transformations[:-2], self.core.make_chain_tt(transformations[-2], transformations[-1]))
 
     def to_str(self, data):
         string = self.data.to_string(data)
