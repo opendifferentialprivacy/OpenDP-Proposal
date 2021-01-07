@@ -12,11 +12,11 @@ pub trait Metric {}    // PLACEHOLDER
 pub trait Measure {}   // PLACEHOLDER
 
 pub trait PrivacyRelation {
-    fn evaluate(&self, _input_distance: &dyn Distance, _output_distance: &dyn Distance) -> bool;
+    fn evaluate(&self, input_distance: &dyn Distance, output_distance: &dyn Distance) -> bool;
 }
 
 pub trait StabilityRelation {
-    fn evaluate(&self, _input_distance: &dyn Distance, _output_distance: &dyn Distance) -> bool;
+    fn evaluate(&self, input_distance: &dyn Distance, output_distance: &dyn Distance) -> bool;
 }
 
 pub trait Domain: TraitObject {
