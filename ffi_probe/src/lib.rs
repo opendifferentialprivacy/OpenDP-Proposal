@@ -1,9 +1,13 @@
+#[macro_use]
+extern crate lazy_static;
+
 pub mod core;
 pub mod data;
 pub mod dom;
 #[macro_use]
 pub mod mono;
 pub mod ops;
+pub mod pointer_ffi;
 
 
 pub(crate) mod ffi_utils {
