@@ -56,7 +56,8 @@ pub fn make_chain<I: 'static, X: 'static, O: 'static>(op1: Operation<X, O>, op0:
     let function1 = op1.function;
     let function0 = op0.function;
     let function = move |arg: *const I| -> Box<O> {
-        function1(&*function0(arg))
+        let res0 = function0(arg);
+        function1(&*res0)
     };
     let function = Box::new(function);
     Operation { in_domain, out_domain, function }
