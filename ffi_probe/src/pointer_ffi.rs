@@ -20,17 +20,17 @@ impl<T> Domain for AllDomain<T> {
 pub struct Operation<I, O> {
     pub in_domain: Box<dyn Domain<Carrier=I>>,
     pub out_domain: Box<dyn Domain<Carrier=O>>,
-    function: Box<dyn Fn(*const I) -> *mut O>,
+    function: Box<dyn Fn(*const I) -> Box<O>>,
 }
 impl<I, O> Operation<I, O> {
     pub fn new_all(function: impl Fn(&I) -> O + 'static) -> Operation<I, O> where I: 'static, O: 'static {
         Operation::new(Box::new(AllDomain::new()), Box::new(AllDomain::new()), function)
     }
     pub fn new(in_dom: Box<dyn Domain<Carrier=I>>, out_dom: Box<dyn Domain<Carrier=O>>, function: impl Fn(&I) -> O + 'static) -> Operation<I, O> {
-        let function = move |arg: *const I| -> *mut O {
+        let function = move |arg: *const I| -> Box<O> {
             let arg = ffi_utils::as_ref(arg);
             let res = function(arg);
-            ffi_utils::into_raw(res)
+            Box::new(res)
         };
         let function = Box::new(function);
         Operation { in_domain: in_dom, out_domain: out_dom, function: function }
@@ -38,9 +38,10 @@ impl<I, O> Operation<I, O> {
     pub fn invoke(&self, arg: &I) -> O {
         let arg = arg as *const I;
         let res = (self.function)(arg);
-        ffi_utils::into_owned(res)
+        *res
     }
-    pub fn invoke_ffi(&self, arg: *const I) -> *mut O {
+    pub fn invoke_ffi(&self, arg: &Box<I>) -> Box<O> {
+        let arg = arg.as_ref() as *const I;
         (self.function)(arg)
     }
 }
@@ -54,12 +55,8 @@ pub fn make_chain<I: 'static, X: 'static, O: 'static>(op1: Operation<X, O>, op0:
     let out_domain = op1.out_domain;
     let function1 = op1.function;
     let function0 = op0.function;
-    let function = move |arg: *const I| -> *mut O {
-        let intermediate = function0(arg) as *const X;
-        let res = function1(intermediate);
-        // Deallocate intermediate.
-        ffi_utils::into_owned(intermediate as *mut X);
-        res
+    let function = move |arg: *const I| -> Box<O> {
+        function1(&*function0(arg))
     };
     let function = Box::new(function);
     Operation { in_domain, out_domain, function }
@@ -70,12 +67,10 @@ pub fn make_composition<I: 'static + Clone, O0: 'static, O1: 'static>(op0: Opera
     let out_domain = Box::new(AllDomain { _marker: PhantomData });
     let function0 = op0.function;
     let function1 = op1.function;
-    let function = move |arg: *const I| -> *mut (Box<O0>, Box<O1>) {
+    let function = move |arg: *const I| -> Box<(Box<O0>, Box<O1>)> {
         let res0 = function0(arg);
         let res1 = function1(arg);
-        let res0 = unsafe { Box::from_raw(res0) };
-        let res1 = unsafe { Box::from_raw(res1) };
-        ffi_utils::into_raw((res0, res1))
+        Box::new((res0, res1))
     };
     let function = Box::new(function);
     Operation { in_domain, out_domain, function }
@@ -178,6 +173,11 @@ pub mod ffi_utils {
         Box::into_raw(Box::<T>::new(o))
     }
 
+    pub fn into_box<T, U>(o: T) -> Box<U> {
+        let p = into_raw(o) as *mut U;
+        unsafe { Box::from_raw(p) }
+    }
+
     pub fn into_owned<T>(p: *mut T) -> T {
         assert!(!p.is_null());
         *unsafe { Box::<T>::from_raw(p) }
@@ -197,49 +197,40 @@ pub mod ffi_utils {
 pub mod ffi {
     use super::*;
     use super::mono::Type;
-    use std::ffi::c_void;
-
-    lazy_static! {
-        static ref OPERATION_TYPE: Type = {
-            Type::new::<Operation<(), ()>>()
-        };
-    }
 
     pub struct FfiObject {
         pub type_: Type,
-        pub pointer: *mut c_void,
+        pub value: Box<()>,
     }
     impl FfiObject {
-        pub fn new_raw(type_: Type, pointer: *mut c_void) -> FfiObject {
-            FfiObject { type_, pointer }
+        pub fn new_typed<T>(type_: Type, value: T) -> FfiObject {
+            let value = ffi_utils::into_box(value);
+            FfiObject { type_, value }
         }
-        pub fn new<T: 'static>(obj: T) -> FfiObject {
+        pub fn new<T: 'static>(value: T) -> FfiObject {
             let type_ = Type::new::<T>();
-            let pointer = ffi_utils::into_raw(obj) as *mut c_void;
-            FfiObject { type_, pointer }
+            Self::new_typed(type_, value)
+        }
+        pub fn into_owned<T>(self) -> T {
+            let value = Box::into_raw(self.value) as *mut T;
+            ffi_utils::into_owned(value)
         }
     }
 
     pub struct FfiOperation {
         pub input_type: Type,
         pub output_type: Type,
-        pub pointer: *mut Operation<(), ()>,
+        pub value: Box<Operation<(), ()>>,
     }
     impl FfiOperation {
-        pub fn new_raw(input_type: Type, output_type: Type, pointer: *mut Operation<(), ()>) -> FfiOperation {
-            FfiOperation { input_type, output_type, pointer }
+        pub fn new_typed<I, O>(input_type: Type, output_type: Type, value: Operation<I, O>) -> FfiOperation {
+            let value = ffi_utils::into_box(value);
+            FfiOperation { input_type, output_type, value }
         }
-        pub fn new<I: 'static, O: 'static>(operation: Operation<I, O>) -> FfiOperation {
+        pub fn new<I: 'static, O: 'static>(value: Operation<I, O>) -> FfiOperation {
             let input_type = Type::new::<I>();
             let output_type = Type::new::<O>();
-            let pointer = ffi_utils::into_raw(operation) as *mut Operation<(), ()>;
-            FfiOperation { input_type, output_type, pointer }
-        }
-        pub fn into_owned(self) -> Operation<(), ()> {
-            ffi_utils::into_owned(self.pointer as *mut Operation<(), ()>)
-        }
-        pub fn as_ref(&self) -> &Operation<(), ()> {
-            ffi_utils::as_ref(self.pointer as *const Operation<(), ()>)
+            Self::new_typed(input_type, output_type, value)
         }
     }
 
@@ -249,10 +240,8 @@ pub mod ffi {
         let arg = ffi_utils::into_owned(arg);
         assert_eq!(arg.type_, operation.input_type);
         let res_type = operation.output_type.clone();
-        let operation = operation.as_ref();
-        let arg = arg.pointer as *mut ();
-        let res = operation.invoke_ffi(arg);
-        let res = FfiObject::new_raw(res_type, res as *mut c_void);
+        let res = operation.value.invoke_ffi(&arg.value);
+        let res = FfiObject::new_typed(res_type, res);
         ffi_utils::into_raw(res)
     }
 
@@ -263,11 +252,8 @@ pub mod ffi {
         assert_eq!(operation0.output_type, operation1.input_type);
         let input_type = operation0.input_type.clone();
         let output_type = operation1.output_type.clone();
-        let operation0 = operation0.into_owned();
-        let operation1 = operation1.into_owned();
-        let operation = super::make_chain(operation1, operation0);
-        let operation = ffi_utils::into_raw(operation);
-        let operation = FfiOperation::new_raw(input_type, output_type, operation);
+        let operation = super::make_chain(*operation1.value, *operation0.value);
+        let operation = FfiOperation::new_typed(input_type, output_type, operation);
         ffi_utils::into_raw(operation)
     }
 
@@ -278,11 +264,8 @@ pub mod ffi {
         assert_eq!(operation0.input_type, operation1.input_type);
         let input_type = operation0.input_type.clone();
         let output_type = Type::new_box_pair(&operation0.output_type, &operation1.output_type);
-        let operation0 = operation0.into_owned();
-        let operation1 = operation1.into_owned();
-        let operation = super::make_composition(operation0, operation1);
-        let operation = ffi_utils::into_raw(operation) as *mut Operation<(), ()>;
-        let operation = FfiOperation::new_raw(input_type, output_type, operation);
+        let operation = super::make_composition(*operation0.value, *operation1.value);
+        let operation = FfiOperation::new_typed(input_type, output_type, operation);
         ffi_utils::into_raw(operation)
     }
 
@@ -308,9 +291,9 @@ mod tests {
         ffi_utils::into_raw(obj)
     }
 
-    fn from_ffi<T: 'static>(obj: *mut FfiObject) -> T {
+    fn from_ffi<T>(obj: *mut FfiObject) -> T {
         let obj = ffi_utils::into_owned(obj);
-        ffi_utils::into_owned(obj.pointer as *mut T)
+        obj.into_owned()
     }
 
     #[test]
