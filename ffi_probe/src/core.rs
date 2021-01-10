@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::data::{Data, Form, TraitObject};
 use crate::dom::PairDomain;
+use crate::ffi_utils;
 
 
 // BUILDING BLOCKS
@@ -60,6 +61,41 @@ impl Measurement {
     }
 }
 
+pub struct MeasurementPtr<I, O> {
+    pub input_domain: Box<dyn Domain>,
+    pub input_metric: Box<dyn Metric>,
+    pub output_domain: Box<dyn Domain>,
+    pub output_measure: Box<dyn Measure>,
+    pub privacy_relation: Box<dyn PrivacyRelation>,
+    function: Rc<dyn Fn(*const I) -> *mut O>,
+}
+
+impl<I, O> MeasurementPtr<I, O> {
+    pub fn new(input_domain: impl Domain + 'static, output_domain: impl Domain + 'static, function: impl Fn(&I) -> O + 'static) -> MeasurementPtr<I, O> {
+        let function = move |arg: *const I| -> *mut O {
+            let arg = ffi_utils::as_ref(arg);
+            let res = function(arg);
+            ffi_utils::into_raw(res)
+        };
+        MeasurementPtr {
+            input_domain: Box::new(input_domain),
+            input_metric: Box::new(dummy::DummyMetric),
+            output_domain: Box::new(output_domain),
+            output_measure: Box::new(dummy::DummyMeasure),
+            privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+            function: Rc::new(function)
+        }
+    }
+    pub fn invoke(&self, arg: &I) -> O {
+        let arg = arg as *const I;
+        let res = (self.function)(arg);
+        ffi_utils::into_owned(res)
+    }
+    pub fn invoke_ffi(&self, arg: *const I) -> *mut O {
+        (self.function)(arg)
+    }
+}
+
 pub struct Transformation {
     pub input_domain: Box<dyn Domain>,
     pub input_metric: Box<dyn Metric>,
@@ -81,6 +117,41 @@ impl Transformation {
         }
     }
     pub fn invoke(&self, arg: &Data) -> Data {
+        (self.function)(arg)
+    }
+}
+
+pub struct TransformationPtr<I, O> {
+    pub input_domain: Box<dyn Domain>,
+    pub input_metric: Box<dyn Metric>,
+    pub output_domain: Box<dyn Domain>,
+    pub output_metric: Box<dyn Metric>,
+    pub stability_relation: Box<dyn StabilityRelation>,
+    function: Rc<dyn Fn(*const I) -> *mut O>,
+}
+
+impl<I, O> TransformationPtr<I, O> {
+    pub fn new(input_domain: impl Domain + 'static, output_domain: impl Domain + 'static, function: impl Fn(&I) -> O + 'static) -> TransformationPtr<I, O> {
+        let function = move |arg: *const I| -> *mut O {
+            let arg = ffi_utils::as_ref(arg);
+            let res = function(arg);
+            ffi_utils::into_raw(res)
+        };
+        TransformationPtr {
+            input_domain: Box::new(input_domain),
+            input_metric: Box::new(dummy::DummyMetric),
+            output_domain: Box::new(output_domain),
+            output_metric: Box::new(dummy::DummyMetric),
+            stability_relation: Box::new(dummy::DummyStabilityRelation),
+            function: Rc::new(function)
+        }
+    }
+    pub fn invoke(&self, arg: &I) -> O {
+        let arg = arg as *const I;
+        let res = (self.function)(arg);
+        ffi_utils::into_owned(res)
+    }
+    pub fn invoke_ffi(&self, arg: *const I) -> *mut O {
         (self.function)(arg)
     }
 }
@@ -109,6 +180,33 @@ pub fn make_chain_mt(measurement: Measurement, transformation: Transformation) -
     }
 }
 
+pub fn make_chain_mt_ptr<I: 'static, X: 'static, O: 'static>(measurement: MeasurementPtr<X, O>, transformation: TransformationPtr<I, X>) -> MeasurementPtr<I, O> {
+    // It's annoying that the arguments are moves rather than borrows, but this is necessary because the functions
+    // need to be moved into the new closure. The only alternative I could work out was to have the arguments
+    // be references with 'static lifetime, but that seemed even worse.
+    assert!(transformation.output_domain.check_compatible(measurement.input_domain.as_ref()));
+    let input_domain = transformation.input_domain;
+    let output_domain = measurement.output_domain;
+    let function0 = transformation.function;
+    let function1 = measurement.function;
+    let function = move |arg: *const I| -> *mut O {
+        let intermediate = function0(arg) as *const X;
+        let res = function1(intermediate);
+        // Deallocate intermediate.
+        ffi_utils::into_owned(intermediate as *mut X);
+        res
+    };
+    let function = Box::new(function);
+    MeasurementPtr {
+        input_domain: input_domain,
+        input_metric: Box::new(dummy::DummyMetric),
+        output_domain: output_domain,
+        output_measure: Box::new(dummy::DummyMeasure),
+        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+        function: Rc::new(function)
+    }
+}
+
 pub fn make_chain_tt(transformation1: Transformation, transformation0: Transformation) -> Transformation {
     // It's annoying that the arguments are moves rather than borrows, but this is necessary because the functions
     // need to be moved into the new closure. The only alternative I could work out was to have the arguments
@@ -128,6 +226,33 @@ pub fn make_chain_tt(transformation1: Transformation, transformation0: Transform
         output_metric: Box::new(dummy::DummyMetric),
         stability_relation: Box::new(dummy::DummyStabilityRelation),
         function: function
+    }
+}
+
+pub fn make_chain_tt_ptr<I: 'static, X: 'static, O: 'static>(transformation1: TransformationPtr<X, O>, transformation0: TransformationPtr<I, X>) -> TransformationPtr<I, O> {
+    // It's annoying that the arguments are moves rather than borrows, but this is necessary because the functions
+    // need to be moved into the new closure. The only alternative I could work out was to have the arguments
+    // be references with 'static lifetime, but that seemed even worse.
+    assert!(transformation0.output_domain.check_compatible(transformation1.input_domain.as_ref()));
+    let input_domain = transformation0.input_domain;
+    let output_domain = transformation1.output_domain;
+    let function0 = transformation0.function;
+    let function1 = transformation1.function;
+    let function = move |arg: *const I| -> *mut O {
+        let intermediate = function0(arg) as *const X;
+        let res = function1(intermediate);
+        // Deallocate intermediate.
+        ffi_utils::into_owned(intermediate as *mut X);
+        res
+    };
+    let function = Box::new(function);
+    TransformationPtr {
+        input_domain: input_domain,
+        input_metric: Box::new(dummy::DummyMetric),
+        output_domain: output_domain,
+        output_metric: Box::new(dummy::DummyMetric),
+        stability_relation: Box::new(dummy::DummyStabilityRelation),
+        function: Rc::new(function)
     }
 }
 
@@ -152,6 +277,31 @@ pub fn make_composition(measurement0: Measurement, measurement1: Measurement) ->
         output_measure: Box::new(dummy::DummyMeasure),
         privacy_relation: Box::new(dummy::DummyPrivacyRelation),
         function: function
+    }
+}
+
+pub fn make_composition_ptr<I: 'static + Clone, OA: 'static, OB: 'static>(measurement0: MeasurementPtr<I, OA>, measurement1: MeasurementPtr<I, OB>) -> MeasurementPtr<I, (Box<OA>, Box<OB>)> {
+    assert!(measurement0.input_domain.check_compatible(measurement1.input_domain.as_ref()));
+    let input_domain = measurement0.input_domain;
+    let output_domain0 = measurement0.output_domain;
+    let output_domain1 = measurement1.output_domain;
+    let output_domain = Box::new(PairDomain::<Data>::new(output_domain0, output_domain1));
+    let function0 = measurement0.function;
+    let function1 = measurement1.function;
+    let function = move |arg: *const I| -> *mut (Box<OA>, Box<OB>) {
+        let res0 = function0(arg);
+        let res1 = function1(arg);
+        let res0 = unsafe { Box::from_raw(res0) };
+        let res1 = unsafe { Box::from_raw(res1) };
+        ffi_utils::into_raw((res0, res1))
+    };
+    MeasurementPtr {
+        input_domain: input_domain,
+        input_metric: Box::new(dummy::DummyMetric),
+        output_domain: output_domain,
+        output_measure: Box::new(dummy::DummyMeasure),
+        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+        function: Rc::new(function)
     }
 }
 
@@ -252,7 +402,26 @@ mod tests {
         assert_eq!(ret, 10);
     }
 
+    #[test]
+    fn test_identity_ptr() {
+        let identity = TransformationPtr::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
+        let arg = 99;
+        let ret = identity.invoke(&arg);
+        assert_eq!(ret, 99);
+    }
+
     // TODO: test_make_chain_mt
+
+    #[test]
+    fn test_make_chain_mt_ptr() {
+        let transformation = TransformationPtr::new(AllDomain::<u8>::new(), AllDomain::<i32>::new(), |a: &u8| (a + 1) as i32);
+        let measurement = MeasurementPtr::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |a: &i32| (a + 1) as f64);
+        let chain = make_chain_mt_ptr(measurement, transformation);
+        let arg = 99_u8;
+        let ret = chain.invoke(&arg);
+        assert_eq!(ret, 101.0);
+    }
+
 
     #[test]
     fn test_make_chain_tt() {
@@ -267,6 +436,16 @@ mod tests {
     }
 
     #[test]
+    fn test_make_chain_tt_ptr() {
+        let transformation0 = TransformationPtr::new(AllDomain::<u8>::new(), AllDomain::<i32>::new(), |a: &u8| (a + 1) as i32);
+        let transformation1 = TransformationPtr::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |a: &i32| (a + 1) as f64);
+        let chain = make_chain_tt_ptr(transformation1, transformation0);
+        let arg = 99_u8;
+        let ret = chain.invoke(&arg);
+        assert_eq!(ret, 101.0);
+    }
+
+    #[test]
     fn test_make_composition() {
         let domain = AllDomain::<i32>::new();
         let measurement0 = Measurement::new(domain.clone(), domain.clone(), |arg| Data::new(arg.as_form::<i32>() + 1));
@@ -277,6 +456,16 @@ mod tests {
         let ret: (Data, Data) = ret.into_form();
         let ret: (i32, i32) = (ret.0.into_form(), ret.1.into_form());
         assert_eq!(ret, (11, 9));
+    }
+
+    #[test]
+    fn test_make_composition_ptr() {
+        let measurement0 = MeasurementPtr::new(AllDomain::<i32>::new(), AllDomain::<f32>::new(), |arg: &i32| (arg + 1) as f32);
+        let measurement1 = MeasurementPtr::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |arg: &i32| (arg - 1) as f64);
+        let chain = make_composition_ptr(measurement0, measurement1);
+        let arg = 99;
+        let ret = chain.invoke(&arg);
+        assert_eq!(ret, (Box::new(100_f32), Box::new(98_f64)));
     }
 
 }

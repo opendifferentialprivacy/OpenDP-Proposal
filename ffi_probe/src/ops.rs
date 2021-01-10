@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Transformation, Measurement};
+use crate::core::{Domain, Measurement, Transformation, TransformationPtr};
 use crate::data::{Data, Element, Form};
 use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain};
 
@@ -20,43 +20,13 @@ pub fn make_identity<T: 'static + Form + Clone>() -> Transformation {
     Transformation::new(input_domain, output_domain, function)
 }
 
-fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
-    fn clamp1<T: Copy + PartialOrd>(lower: T, upper: T, x: T) -> T {
-        if x < lower { lower } else if x > upper { upper } else { x }
-    }
-    x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
-
-}
-
-pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Transformation where
-    T: 'static + Element + Copy + PartialEq + PartialOrd {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
-    let input_domain = input_domain.clone();
-    let output_domain = VectorDomain::<T>::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
-    let function = move |arg: &Data| -> Data {
-        let arg: &Vec<T> = arg.as_form();
-        let ret = clamp(lower, upper, arg);
-        Data::new(ret)
-    };
-    Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Transformation where
-    T: 'static + Element + Clone + PartialEq + Sum<T> {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
-    let element_domain = &input_domain.element_domain;
-    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
-    // TODO: Configure stability from bounds of element_domain.
-    let input_domain = input_domain.clone();
+pub fn make_identity_ptr<T: 'static + Form + Clone>() -> TransformationPtr<T, T> {
+    let input_domain = AllDomain::<T>::new();
     let output_domain = AllDomain::<T>::new();
-    let function = |arg: &Data| -> Data {
-        let arg: &Vec<T> = arg.as_form();
-        // FIXME: Can't make this work with references, have to clone.
-        let arg = arg.clone();
-        let ret: T = arg.into_iter().sum();
-        Data::new(ret)
+    let function = |arg: &T| -> T {
+        arg.clone()
     };
-    Transformation::new(input_domain, output_domain, function)
+    TransformationPtr::new(input_domain, output_domain, function)
 }
 
 fn vec_string_to_str(src: &Vec<String>) -> Vec<&str> {
@@ -83,6 +53,16 @@ pub fn make_split_lines() -> Transformation {
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_split_lines_ptr() -> TransformationPtr<String, Vec<String>> {
+    let input_domain = AllDomain::<String>::new();
+    let output_domain = VectorDomain::<String>::new_all();
+    let function = |arg: &String| -> Vec<String> {
+        let ret = split_lines(arg);
+        vec_str_to_string(ret)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
 fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     T: FromStr + Default,
     T::Err: Debug {
@@ -106,6 +86,17 @@ pub fn make_parse_series<T>(impute: bool) -> Transformation where
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_parse_series_ptr<T>(impute: bool) -> TransformationPtr<Vec<String>, Vec<T>> where
+    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+    let input_domain = VectorDomain::<String>::new_all();
+    let output_domain = VectorDomain::<T>::new_all();
+    let function = move |arg: &Vec<String>| -> Vec<T> {
+        let arg = vec_string_to_str(arg);
+        parse_series(&arg, impute)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
 fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
     fn split<'a>(line: &'a str, separator: &str) -> Vec<&'a str> {
         line.split(separator).into_iter().map(|e| e.trim()).collect()
@@ -126,6 +117,18 @@ pub fn make_split_records(separator: Option<&str>) -> Transformation {
         Data::new(ret)
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_split_records_ptr(separator: Option<&str>) -> TransformationPtr<Vec<String>, Vec<Vec<String>>> {
+    let separator = separator.unwrap_or(",").to_owned();
+    let input_domain = VectorDomain::<String>::new_all();
+    let output_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
+    let function = move |arg: &Vec<String>| -> Vec<Vec<String>> {
+        let arg = vec_string_to_str(arg);
+        let ret = split_records(&separator, &arg);
+        ret.into_iter().map(vec_str_to_string).collect()
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
 }
 
 fn conform_records<'a>(len: usize, records: &Vec<Vec<&'a str>>) -> Vec<Vec<&'a str>> {
@@ -175,6 +178,16 @@ pub fn make_create_dataframe(col_count: usize) -> Transformation {
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_create_dataframe_ptr(col_count: usize) -> TransformationPtr<Vec<Vec<String>>, DataFrame> {
+    let input_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
+    let output_domain = create_raw_dataframe_domain(col_count);
+    let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
+        let arg = arg.into_iter().map(|e| vec_string_to_str(e)).collect();
+        create_dataframe(col_count, &arg)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
 fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame {
     let lines = split_lines(s);
     let records = split_records(separator, &lines);
@@ -192,6 +205,16 @@ pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transf
         Data::new(ret)
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_split_dataframe_ptr(separator: Option<&str>, col_count: usize) -> TransformationPtr<String, DataFrame> {
+    let separator = separator.unwrap_or(",").to_owned();
+    let input_domain = AllDomain::<String>::new();
+    let output_domain = create_raw_dataframe_domain(col_count);
+    let function = move |arg: &String| -> DataFrame {
+        split_dataframe(&separator, col_count, &arg)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
 }
 
 fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
@@ -229,6 +252,24 @@ pub fn make_parse_column<T>(input_domain: &dyn Domain, key: &str, impute: bool) 
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_parse_column_ptr<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> TransformationPtr<DataFrame, DataFrame> where
+    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+    let key = key.to_owned();
+    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_parse_column()");
+    // TODO: Assert rest of input_domain is valid.
+    let input_domain = input_domain.clone();
+    let output_element_domains = input_domain.element_domains
+        .iter()
+        .map(|(k, v)|
+            if k == &key { (k.clone(), Box::new(DataDomain::new(VectorDomain::<T>::new_all())) as Box<dyn Domain>) } else { (k.clone(), v.box_clone()) })
+        .collect();
+    let output_domain = HeterogeneousMapDomain::new(output_element_domains);
+    let function = move |arg: &DataFrame| -> DataFrame {
+        parse_column::<T>(&key, impute, arg)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
 pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Transformation where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
@@ -244,6 +285,74 @@ pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Transforma
         let ret = arg.get(&key).expect("Missing dataframe column");
         let ret: &Vec<T> = ret.as_form();
         let ret = ret.clone();
+        Data::new(ret)
+    };
+    Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_select_column_ptr<T>(input_domain: &dyn Domain, key: &str) -> TransformationPtr<DataFrame, Vec<T>> where
+    T: 'static + Element + Clone + PartialEq {
+    let key = key.to_owned();
+    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_select_column()");
+    let column_domain = input_domain.element_domains.get(&key).expect("Bogus input_domain in make_select_column()");
+    let column_domain = column_domain.as_any().downcast_ref::<DataDomain>().expect("Bogus input_domain in make_select_column()");
+    // It's a drag that we need a type argument to get column_domain out. Might want to change Transformation::new() to take Box<dyn Domain> instead of impl Domain.
+    let column_domain = column_domain.form_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_select_column()");
+    let input_domain = input_domain.clone();
+    let output_domain = column_domain.clone();
+    let function = move |arg: &DataFrame| -> Vec<T> {
+        let ret = arg.get(&key).expect("Missing dataframe column");
+        let ret: &Vec<T> = ret.as_form();
+        ret.clone()
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
+fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
+    fn clamp1<T: Copy + PartialOrd>(lower: T, upper: T, x: T) -> T {
+        if x < lower { lower } else if x > upper { upper } else { x }
+    }
+    x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
+
+}
+
+pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Transformation where
+    T: 'static + Element + Copy + PartialEq + PartialOrd {
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
+    let input_domain = input_domain.clone();
+    let output_domain = VectorDomain::<T>::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+    let function = move |arg: &Data| -> Data {
+        let arg: &Vec<T> = arg.as_form();
+        let ret = clamp(lower, upper, arg);
+        Data::new(ret)
+    };
+    Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_clamp_ptr<T>(input_domain: &dyn Domain, lower: T, upper: T) -> TransformationPtr<Vec<T>, Vec<T>> where
+    T: 'static + Element + Copy + PartialEq + PartialOrd {
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
+    let input_domain = input_domain.clone();
+    let output_domain = VectorDomain::<T>::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+    let function = move |arg: &Vec<T>| -> Vec<T> {
+        clamp(lower, upper, arg)
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
+pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Transformation where
+    T: 'static + Element + Clone + PartialEq + Sum<T> {
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    let element_domain = &input_domain.element_domain;
+    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    // TODO: Configure stability from bounds of element_domain.
+    let input_domain = input_domain.clone();
+    let output_domain = AllDomain::<T>::new();
+    let function = |arg: &Data| -> Data {
+        let arg: &Vec<T> = arg.as_form();
+        // FIXME: Can't make this work with references, have to clone.
+        let arg = arg.clone();
+        let ret: T = arg.into_iter().sum();
         Data::new(ret)
     };
     Transformation::new(input_domain, output_domain, function)
@@ -463,9 +572,17 @@ r#"{
 
 #[cfg(test)]
 mod tests {
-    use crate::core::make_chain_tt;
+    use crate::core::{make_chain_tt, make_chain_tt_ptr};
 
     use super::*;
+
+    #[test]
+    fn test_identity_ptr() {
+        let identity = make_identity_ptr();
+        let arg = 99;
+        let ret = identity.invoke(&arg);
+        assert_eq!(ret, 99);
+    }
 
     #[test]
     fn test_make_split_lines() {
@@ -475,6 +592,34 @@ mod tests {
         let ret = transformation.invoke(&arg);
         let ret: Vec<String> = ret.into_form();
         assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
+    }
+
+    #[test]
+    fn test_make_split_lines_ptr() {
+        let transformation = make_split_lines_ptr();
+        let arg = "ant\nbat\ncat\n".to_owned();
+        let ret = transformation.invoke(&arg);
+        assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
+    }
+
+    #[test]
+    fn test_make_parse_series() {
+        let transformation = make_parse_series::<i32>(true);
+        let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
+        let arg = Data::new(arg);
+        let ret = transformation.invoke(&arg);
+        let ret: Vec<i32> = ret.into_form();
+        let expected = vec![1, 2, 3, 0];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_parse_series_ptr() {
+        let transformation = make_parse_series_ptr::<i32>(true);
+        let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
+        let ret = transformation.invoke(&arg);
+        let expected = vec![1, 2, 3, 0];
+        assert_eq!(ret, expected);
     }
 
     #[test]
@@ -488,6 +633,18 @@ mod tests {
             Data::new(vec!["ant".to_owned(), "foo".to_owned()]),
             Data::new(vec!["bat".to_owned(), "bar".to_owned()]),
             Data::new(vec!["cat".to_owned(), "baz".to_owned()]),
+        ]);
+    }
+
+    #[test]
+    fn test_make_split_records_ptr() {
+        let transformation = make_split_records_ptr(None);
+        let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
+        let ret = transformation.invoke(&arg);
+        assert_eq!(ret, vec![
+            vec!["ant".to_owned(), "foo".to_owned()],
+            vec!["bat".to_owned(), "bar".to_owned()],
+            vec!["cat".to_owned(), "baz".to_owned()],
         ]);
     }
 
@@ -510,6 +667,22 @@ mod tests {
     }
 
     #[test]
+    fn test_make_create_dataframe_ptr() {
+        let transformation = make_create_dataframe_ptr(2);
+        let arg = vec![
+            vec!["ant".to_owned(), "foo".to_owned()],
+            vec!["bat".to_owned(), "bar".to_owned()],
+            vec!["cat".to_owned(), "baz".to_owned()],
+        ];
+        let ret = transformation.invoke(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_split_dataframe() {
         let transformation = make_split_dataframe(None, 2);
         let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
@@ -524,13 +697,14 @@ mod tests {
     }
 
     #[test]
-    fn test_make_parse_series() {
-        let transformation = make_parse_series::<i32>(true);
-        let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
-        let arg = Data::new(arg);
+    fn test_make_split_dataframe_ptr() {
+        let transformation = make_split_dataframe_ptr(None, 2);
+        let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
         let ret = transformation.invoke(&arg);
-        let ret: Vec<i32> = ret.into_form();
-        let expected = vec![1, 2, 3, 0];
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
         assert_eq!(ret, expected);
     }
 
@@ -545,6 +719,22 @@ mod tests {
         let arg = Data::new(arg);
         let ret = transformation.invoke(&arg);
         let ret: DataFrame = ret.into_form();
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec![1, 2, 0])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_parse_column_ptr() {
+        let input_domain = create_raw_dataframe_domain(2);
+        let transformation = make_parse_column_ptr::<i32>(&input_domain, "1", true);
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.invoke(&arg);
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec![1, 2, 0])),
@@ -575,6 +765,26 @@ mod tests {
     }
 
     #[test]
+    fn test_make_parse_columns_ptr() {
+        let input_domain = create_raw_dataframe_domain(3);
+        let transformation0 = make_parse_column_ptr::<i32>(&input_domain, "1", true);
+        let transformation1 = make_parse_column_ptr::<f64>(transformation0.output_domain.as_ref(), "2", true);
+        let transformation = make_chain_tt_ptr(transformation1, transformation0);
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
+            ("2".to_owned(), Data::new(vec!["1.1".to_owned(), "2.2".to_owned(), "3.3".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.invoke(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec![1, 2, 3])),
+            ("2".to_owned(), Data::new(vec![1.1, 2.2, 3.3])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_select_column() {
         let input_domain = create_raw_dataframe_domain(2);
         let transformation = make_select_column::<String>(&input_domain, "1");
@@ -590,6 +800,19 @@ mod tests {
     }
 
     #[test]
+    fn test_make_select_column_ptr() {
+        let input_domain = create_raw_dataframe_domain(2);
+        let transformation = make_select_column_ptr::<String>(&input_domain, "1");
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.invoke(&arg);
+        let expected = vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_clamp() {
         let input_domain = VectorDomain::<i32>::new_all();
         let transformation = make_clamp(&input_domain, 0, 10);
@@ -597,6 +820,16 @@ mod tests {
         let arg = Data::new(arg);
         let ret = transformation.invoke(&arg);
         let ret: Vec<i32> = ret.into_form();
+        let expected = vec![0, 0, 0, 5, 10, 10];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_clamp_ptr() {
+        let input_domain = VectorDomain::<i32>::new_all();
+        let transformation = make_clamp_ptr(&input_domain, 0, 10);
+        let arg = vec![-10, -5, 0, 5, 10, 20];
+        let ret = transformation.invoke(&arg);
         let expected = vec![0, 0, 0, 5, 10, 10];
         assert_eq!(ret, expected);
     }
