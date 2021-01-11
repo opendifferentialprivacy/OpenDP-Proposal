@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Measurement, Transformation, TransformationPtr};
+use crate::core::{Domain, Measurement, Transformation, TransformationPtr, MeasurementPtr};
 use crate::data::{Data, Element, Form};
 use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain};
 
@@ -358,6 +358,22 @@ pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Transformation where
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_bounded_sum_ptr<T>(input_domain: &dyn Domain) -> TransformationPtr<Vec<T>, T> where
+    T: 'static + Element + Clone + PartialEq + Sum<T> {
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    let element_domain = &input_domain.element_domain;
+    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    // TODO: Configure stability from bounds of element_domain.
+    let input_domain = input_domain.clone();
+    let output_domain = AllDomain::<T>::new();
+    let function = |arg: &Vec<T>| -> T {
+        // FIXME: Can't make this work with references, have to clone.
+        let arg = arg.clone();
+        arg.into_iter().sum()
+    };
+    TransformationPtr::new(input_domain, output_domain, function)
+}
+
 fn laplace(sigma: f64) -> f64 {
     let mut rng = rand::thread_rng();
     let u: f64 = rng.gen_range(-0.5, 0.5);
@@ -373,6 +389,7 @@ impl AddNoise for i32 { fn add_noise(self, noise: f64) -> Self { (self as f64 + 
 impl AddNoise for i64 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 impl AddNoise for f32 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 impl AddNoise for f64 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
+impl AddNoise for u8 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 
 pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Measurement where
     T: 'static + Element + Copy + PartialEq + AddNoise {
@@ -388,6 +405,18 @@ pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Measuremen
     Measurement::new(input_domain, output_domain, function)
 }
 
+pub fn make_base_laplace_ptr<T>(input_domain: &dyn Domain, sigma: f64) -> MeasurementPtr<T, T> where
+    T: 'static + Element + Copy + PartialEq + AddNoise {
+    let input_domain = input_domain.as_any().downcast_ref::<AllDomain<T>>().expect("Bogus input_domain in make_base_laplace()");
+    let input_domain = input_domain.clone();
+    let output_domain = AllDomain::<T>::new();
+    let function = move |arg: &T| -> T {
+        let noise = laplace(sigma);
+        arg.add_noise(noise)
+    };
+    MeasurementPtr::new(input_domain, output_domain, function)
+}
+
 
 mod ffi {
     use std::convert::TryInto;
@@ -395,7 +424,8 @@ mod ffi {
 
     use crate::ffi_utils;
     use crate::ffi_utils::c_bool;
-    use crate::mono::Dispatcher;
+    use crate::core::ffi::{FfiTransformation, FfiMeasurement};
+    use crate::mono::{Dispatcher, TypeArgs};
 
     use super::*;
 
@@ -414,9 +444,25 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_identity_ptr(type_args: *const c_char) -> *mut FfiTransformation {
+        fn monomorphize<T: 'static + Form + Clone>() -> *mut FfiTransformation {
+            let transformation = make_identity_ptr::<T>();
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], ())
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_lines() -> *mut Transformation {
         let transformation = make_split_lines();
         ffi_utils::into_raw(transformation)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_split_lines_ptr() -> *mut FfiTransformation {
+        let transformation = make_split_lines_ptr();
+        FfiTransformation::new(transformation)
     }
 
     #[no_mangle]
@@ -436,10 +482,29 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_parse_series_ptr(type_args: *const c_char, impute: c_bool) -> *mut FfiTransformation {
+        fn monomorphize<T>(impute: bool) -> *mut FfiTransformation where
+            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+            let transformation = make_parse_series_ptr::<T>(impute);
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let impute = ffi_utils::to_bool(impute);
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (impute))
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut Transformation {
         let separator = ffi_utils::to_option_str(separator);
         let transformation = make_split_records(separator);
         ffi_utils::into_raw(transformation)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_split_records_ptr(separator: *const c_char) -> *mut FfiTransformation {
+        let separator = ffi_utils::to_option_str(separator);
+        let transformation = make_split_records_ptr(separator);
+        FfiTransformation::new(transformation)
     }
 
     #[no_mangle]
@@ -450,11 +515,26 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_create_dataframe_ptr(col_count: c_uint) -> *mut FfiTransformation {
+        let col_count = col_count as usize;
+        let transformation = make_create_dataframe_ptr(col_count);
+        FfiTransformation::new(transformation)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_dataframe(separator: *const c_char, col_count: c_uint) -> *mut Transformation {
         let separator = ffi_utils::to_option_str(separator);
         let col_count = col_count as usize;
         let transformation = make_split_dataframe(separator, col_count);
         ffi_utils::into_raw(transformation).cast()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_split_dataframe_ptr(separator: *const c_char, col_count: c_uint) -> *mut FfiTransformation {
+        let separator = ffi_utils::to_option_str(separator);
+        let col_count = col_count as usize;
+        let transformation = make_split_dataframe_ptr(separator, col_count);
+        FfiTransformation::new(transformation)
     }
 
     #[no_mangle]
@@ -476,6 +556,20 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_parse_column_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
+        fn monomorphize<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> *mut FfiTransformation where
+            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+            let transformation = make_parse_column_ptr::<T>(input_domain, key, impute);
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        let key = ffi_utils::to_str(key);
+        let impute = ffi_utils::to_bool(impute);
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (input_domain, key, impute))
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_select_column(selector: *const c_char, input_transformation: *const Transformation, key: *const c_char) -> *mut Transformation {
         fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain, &str) -> Transformation> where
             T: 'static + Element + Clone + PartialEq {
@@ -490,6 +584,19 @@ mod ffi {
         let key = ffi_utils::to_str(key);
         let transformation = dispatcher.get(&selector).unwrap()(input_domain, key);
         ffi_utils::into_raw(transformation)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_select_column_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformation {
+        fn monomorphize<T>(input_domain: &dyn Domain, key: &str) -> *mut FfiTransformation where
+            T: 'static + Element + Clone + PartialEq {
+            let transformation = make_select_column_ptr::<T>(input_domain, key);
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        let key = ffi_utils::to_str(key);
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (input_domain, key))
     }
 
     #[no_mangle]
@@ -513,6 +620,20 @@ mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_ops__make_clamp_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+        fn monomorphize<T>(input_domain: &dyn Domain, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
+            T: 'static + Element + Copy + PartialEq + PartialOrd {
+            let lower = ffi_utils::as_ref(lower as *const T).clone();
+            let upper = ffi_utils::as_ref(upper as *const T).clone();
+            let transformation = make_clamp_ptr::<T>(input_domain, lower, upper);
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, u8])], (input_domain, lower, upper))
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_ops__make_bounded_sum(selector: *const c_char, input_transformation: *const Transformation) -> *mut Transformation {
         fn monomorphize<T>() -> Box<dyn Fn(&dyn Domain) -> Transformation> where
             T: 'static + Element + Clone + PartialEq + Sum {
@@ -526,6 +647,18 @@ mod ffi {
         let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
         let transformation = dispatcher.get(&selector).unwrap()(input_domain);
         ffi_utils::into_raw(transformation)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_bounded_sum_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation) -> *mut FfiTransformation {
+        fn monomorphize<T>(input_domain: &dyn Domain) -> *mut FfiTransformation where
+            T: 'static + Element + Clone + PartialEq + Sum {
+            let transformation = make_bounded_sum_ptr::<T>(input_domain);
+            FfiTransformation::new(transformation)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, u8])], (input_domain))
     }
 
     #[no_mangle]
@@ -544,6 +677,18 @@ mod ffi {
         let input_domain = ffi_utils::as_ref(input_transformation).output_domain.as_ref();
         let transformation = dispatcher.get(&selector).unwrap()(input_domain, sigma);
         ffi_utils::into_raw(transformation)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_ops__make_base_laplace_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, sigma: f64) -> *mut FfiMeasurement {
+        fn monomorphize<T>(input_domain: &dyn Domain, sigma: f64) -> *mut FfiMeasurement where
+            T: 'static + Element + Copy + PartialEq + AddNoise {
+            let measurement = make_base_laplace_ptr::<T>(input_domain, sigma);
+            FfiMeasurement::new(measurement)
+        }
+        let type_args = TypeArgs::expect(type_args, 1);
+        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, u8])], (input_domain, sigma))
     }
 
     #[no_mangle]
@@ -769,7 +914,7 @@ mod tests {
         let input_domain = create_raw_dataframe_domain(3);
         let transformation0 = make_parse_column_ptr::<i32>(&input_domain, "1", true);
         let transformation1 = make_parse_column_ptr::<f64>(transformation0.output_domain.as_ref(), "2", true);
-        let transformation = make_chain_tt_ptr(transformation1, transformation0);
+        let transformation = make_chain_tt_ptr(&transformation1, &transformation0);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
@@ -847,6 +992,16 @@ mod tests {
     }
 
     #[test]
+    fn test_make_bounded_sum_ptr() {
+        let input_domain = VectorDomain::<i32>::new(IntervalDomain::<i32>::new(Bound::Included(0), Bound::Included(10)));
+        let transformation = make_bounded_sum_ptr::<i32>(&input_domain);
+        let arg = vec![1, 2, 3, 4, 5];
+        let ret = transformation.invoke(&arg);
+        let expected = 15;
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_base_laplace() {
         let input_domain = AllDomain::<f64>::new();
         let measurement = make_base_laplace::<f64>(&input_domain, 1.0);
@@ -854,6 +1009,15 @@ mod tests {
         let arg = Data::new(arg);
         let ret = measurement.invoke(&arg);
         let _ret: f64 = ret.into_form();
+        // TODO: Test for base_laplace
+    }
+
+    #[test]
+    fn test_make_base_laplace_ptr() {
+        let input_domain = AllDomain::<f64>::new();
+        let measurement = make_base_laplace_ptr::<f64>(&input_domain, 1.0);
+        let arg = 0.0;
+        let _ret = measurement.invoke(&arg);
         // TODO: Test for base_laplace
     }
 

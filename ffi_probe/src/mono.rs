@@ -2,46 +2,73 @@ use std::any::{type_name, TypeId};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+use crate::ffi_utils;
+use std::os::raw::c_char;
 
 #[derive(Debug)]
 pub struct TypeError;
 
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Type(String);
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Type {
+    pub descriptor: String,
+}
 
 impl Type {
     pub fn new<T: 'static>() -> Type {
         // TODO: Better generation of type descriptors.
-        // Special case String, otherwise we get "alloc::string::String".
+        // Special case some stuff.
         let descriptor = if TypeId::of::<T>() == TypeId::of::<String>() {
             "String"
         } else {
             type_name::<T>()
         };
-        Type(format!("{}", descriptor))
+        let descriptor = descriptor.to_owned();
+        Type::new_from_descriptor(descriptor)
     }
-    pub fn descriptor(&self) -> String {
-        self.0.clone()
+    // Hacky special entry point for composition.
+    pub fn new_box_pair(type0: &Type, type1: &Type) -> Type {
+        let descriptor = format!("(Box<{}>, Box<{}>)", type0.descriptor, type1.descriptor);
+        Type::new_from_descriptor(descriptor)
     }
+    pub fn new_from_descriptor(descriptor: String) -> Type {
+        Type { descriptor }
+    }
+}
+
+macro_rules! types {
+    ($($type:ty),*) => { vec![$(Type::new::<$type>()),*] }
+}
+lazy_static! {
+    static ref DESCRIPTOR_TO_TYPE: HashMap<String, Type> = {
+        types![
+            bool, char, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, String
+        ].into_iter().map(|e| (e.descriptor.clone(), e)).collect()
+    };
 }
 
 impl TryFrom<&str> for Type {
     type Error = TypeError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         // TODO: Type validation.
-        Ok(Type(value.to_owned()))
+        Ok(Type::new_from_descriptor(value.to_owned()))
     }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct TypeArgs(Vec<Type>);
+pub struct TypeArgs(pub(crate) Vec<Type>);
 
 impl TypeArgs {
+    pub fn expect(descriptor: *const c_char, count: usize) -> TypeArgs {
+        let descriptor = ffi_utils::to_str(descriptor);
+        let type_args: TypeArgs = descriptor.try_into().expect("Bogus type args");
+        assert!(type_args.0.len() == count);
+        type_args
+    }
     pub fn new(args: Vec<Type>) -> TypeArgs {
         TypeArgs(args)
     }
     pub fn descriptor(&self) -> String {
-        let arg_descriptors: Vec<_> = self.0.iter().map(|e| e.descriptor()).collect();
+        let arg_descriptors: Vec<_> = self.0.iter().map(|e| e.descriptor.as_str()).collect();
         format!("<{}>", arg_descriptors.join(", "))
     }
 }

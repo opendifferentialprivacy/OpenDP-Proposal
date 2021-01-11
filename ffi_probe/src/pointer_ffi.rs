@@ -204,12 +204,13 @@ pub mod ffi {
         pub value: Box<()>,
     }
     impl FfiObject {
-        pub fn new_typed<T>(type_: Type, value: T) -> FfiObject {
-            let value = ffi_utils::into_box(value);
-            FfiObject { type_, value }
+        pub fn new_typed(type_: Type, value: Box<()>) -> *mut FfiObject {
+            let object = FfiObject { type_, value };
+            ffi_utils::into_raw(object)
         }
-        pub fn new<T: 'static>(value: T) -> FfiObject {
+        pub fn new<T: 'static>(value: T) -> *mut FfiObject {
             let type_ = Type::new::<T>();
+            let value = ffi_utils::into_box(value);
             Self::new_typed(type_, value)
         }
         pub fn into_owned<T>(self) -> T {
@@ -242,8 +243,7 @@ pub mod ffi {
         assert_eq!(arg.type_, operation.input_type);
         let res_type = operation.output_type.clone();
         let res = operation.value.invoke_ffi(&arg.value);
-        let res = FfiObject::new_typed(res_type, res);
-        ffi_utils::into_raw(res)
+        FfiObject::new_typed(res_type, res)
     }
 
     #[no_mangle]
@@ -288,8 +288,7 @@ mod tests {
     }
 
     fn to_ffi<T: 'static>(obj: T) -> *mut FfiObject {
-        let obj = FfiObject::new(obj);
-        ffi_utils::into_raw(obj)
+        FfiObject::new(obj)
     }
 
     fn from_ffi<T>(obj: *mut FfiObject) -> T {
@@ -324,20 +323,6 @@ mod tests {
         let op0 = make_ffi_operation(|a: &i32| (a + 1) as f32);
         let op1 = make_ffi_operation(|a: &i32| (a + 1) as f64);
         let op = ffi::make_composition(op0, op1);
-        let a = 99;
-        let a = to_ffi(a);
-        let r = ffi::invoke(op, a);
-        let r: (Box<f32>, Box<f64>) = from_ffi(r);
-        assert_eq!(r, (Box::new(100.0_f32), Box::new(100.0_f64)));
-    }
-
-    #[test]
-    fn test_make_composition_xxx() {
-        let op0 = Operation::new_all(|a: &i32| (a + 1) as f32);
-        let op1 = Operation::new_all(|a: &i32| (a + 1) as f64);
-        let op = make_composition(op0, op1);
-        let op = FfiOperation::new(op);
-        let op = ffi_utils::into_raw(op);
         let a = 99;
         let a = to_ffi(a);
         let r = ffi::invoke(op, a);

@@ -114,12 +114,19 @@ pub mod ffi {
     use crate::ffi_utils;
 
     use super::*;
+    use crate::core::ffi::FfiObject;
 
     #[no_mangle]
     pub extern "C" fn opendp_data__from_string(p: *const c_char) -> *mut Data {
         let s = ffi_utils::to_str(p).to_owned();
         let data = Data::new(s);
         ffi_utils::into_raw(data)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_data__from_string_ptr(p: *const c_char) -> *mut FfiObject {
+        let s = ffi_utils::to_str(p).to_owned();
+        FfiObject::new(s)
     }
 
     #[no_mangle]
@@ -132,7 +139,31 @@ pub mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_data__to_string_ptr(this: *const FfiObject) -> *const c_char {
+        fn monomorphize<T: std::fmt::Debug>(this: &FfiObject) -> *const c_char {
+            let this = this.as_ref::<T>();
+            // FIXME: Figure out how to implement general to_string().
+            let string = format!("{:?}", this);
+            // FIXME: Leaks string.
+            ffi_utils::into_c_char_p(string)
+        }
+        let this = ffi_utils::as_ref(this);
+        let type_arg = &this.type_;
+        dispatch!(monomorphize, [(type_arg, [
+            u32, u64, i32, i64, f32, f64, bool, String, u8, Data,
+            Vec<u32>, Vec<u64>, Vec<i32>, Vec<i64>, Vec<f32>, Vec<f64>, Vec<bool>, Vec<String>, Vec<u8>, Vec<Data>, Vec<Vec<String>>,
+            HashMap<String, Data>,
+            (Box<i32>, Box<f64>)
+        ])], (this))
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_data__data_free(this: *mut Data) {
+        ffi_utils::into_owned(this);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_data__data_free_ptr(this: *mut FfiObject) {
         ffi_utils::into_owned(this);
     }
 
@@ -191,13 +222,13 @@ mod tests {
         test_round_trip(form);
     }
 
-    #[test]
-    #[should_panic]
-    fn test_bogus() {
-        let form = (Data::new(vec![1, 2, 3]), Data::new(99.9));
-        let data = Data::new(form);
-        let _retrieved: Vec<String> = data.into_form();
-    }
+    // #[test]
+    // #[should_panic]
+    // fn test_bogus() {
+    //     let form = (Data::new(vec![1, 2, 3]), Data::new(99.9));
+    //     let data = Data::new(form);
+    //     let _retrieved: Vec<String> = data.into_form();
+    // }
 
     fn test_round_trip<T: 'static + Form + PartialEq>(form: T) {
         let data = Data { form: form.box_clone() };
