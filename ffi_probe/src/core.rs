@@ -35,17 +35,10 @@ pub trait DomainImpl {
 }
 
 pub trait DomainPtr: TraitObject {
-    fn box_clone(&self) -> Box<dyn Domain>; // IMPLEMENTATION DETAIL, PLEASE IGNORE.
-    fn check_compatible(&self, other: &dyn Domain) -> bool;
-    fn check_valid(&self, val: &Data) -> bool;
-}
-// IMPLEMENTATION DETAIL, PLEASE IGNORE.
-/// A smaller trait for the type-specific Domain stuff. I haven't figured out a way to dispatch
-/// directly to one of these in check_valid() (avoiding the wrapping), but keeping it as a separate
-/// trait for now.
-pub trait DomainImplPtr {
-    type Carrier: 'static + Form;
-    fn check_valid_impl(&self, val: &Self::Carrier) -> bool;
+    type Carrier;
+    fn box_clone(&self) -> Box<dyn DomainPtr<Carrier=Self::Carrier>>;
+    fn check_compatible(&self, other: &dyn DomainPtr<Carrier=Self::Carrier>) -> bool;
+    fn check_valid(&self, val: &Self::Carrier) -> bool;
 }
 
 
@@ -294,7 +287,7 @@ pub fn make_composition(measurement0: Measurement, measurement1: Measurement) ->
     }
 }
 
-pub fn make_composition_ptr<I: 'static + Clone, OA: 'static, OB: 'static>(measurement0: &MeasurementPtr<I, OA>, measurement1: &MeasurementPtr<I, OB>) -> MeasurementPtr<I, (Box<OA>, Box<OB>)> {
+pub fn make_composition_ptr<I: 'static, OA: 'static, OB: 'static>(measurement0: &MeasurementPtr<I, OA>, measurement1: &MeasurementPtr<I, OB>) -> MeasurementPtr<I, (Box<OA>, Box<OB>)> {
     assert!(measurement0.input_domain.check_compatible(measurement1.input_domain.as_ref()));
     let input_domain = measurement0.input_domain.box_clone();
     let output_domain0 = measurement0.output_domain.box_clone();
