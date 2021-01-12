@@ -10,47 +10,56 @@ pub struct TypeError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Type {
-    pub descriptor: String,
+    pub id: TypeId,
+    pub name: &'static str,
+    pub descriptor: &'static str,
 }
 
 impl Type {
     pub fn new<T: 'static>() -> Type {
-        // TODO: Better generation of type descriptors.
-        // Special case some stuff.
-        let descriptor = if TypeId::of::<T>() == TypeId::of::<String>() {
-            "String"
-        } else {
-            type_name::<T>()
-        };
-        let descriptor = descriptor.to_owned();
-        Type::new_from_descriptor(descriptor)
+        let descriptor = type_name::<T>();
+        Self::new_descriptor::<T>(descriptor)
     }
+
+    pub fn new_descriptor<T: 'static>(descriptor: &'static str) -> Type {
+        let id = TypeId::of::<T>();
+        let name = type_name::<T>();
+        Type { id, name, descriptor }
+    }
+
     // Hacky special entry point for composition.
     pub fn new_box_pair(type0: &Type, type1: &Type) -> Type {
-        let descriptor = format!("(Box<{}>, Box<{}>)", type0.descriptor, type1.descriptor);
-        Type::new_from_descriptor(descriptor)
-    }
-    pub fn new_from_descriptor(descriptor: String) -> Type {
-        Type { descriptor }
+        fn monomorphize<T0: 'static, T1: 'static>(type0: &Type, type1: &Type) -> Type {
+            let descriptor = format!("(Box<{}>, Box<{}>)", type0.descriptor, type1.descriptor);
+            // Hacky way to get &'static str from String.
+            let descriptor = Box::leak(descriptor.into_boxed_str());
+            Type::new_descriptor::<(Box<T0>, Box<T1>)>(descriptor)
+        }
+        dispatch!(
+            monomorphize,
+            // FIXME: The Box<f64> entries are here for demo use.
+            [(type0, [u32, u64, i32, i64, f32, f64, bool, String, u8, (Box<f64>, Box<f64>)]), (type1, [u32, u64, i32, i64, f32, f64, bool, String, u8, (Box<f64>, Box<f64>)])],
+            (type0, type1)
+        )
     }
 }
 
-macro_rules! types {
-    ($($type:ty),*) => { vec![$(Type::new::<$type>()),*] }
+macro_rules! descriptor_types {
+    ($($type:ty),*) => { vec![$(Type::new_descriptor::<$type>(stringify!($type))),*] }
 }
 lazy_static! {
     static ref DESCRIPTOR_TO_TYPE: HashMap<String, Type> = {
-        types![
+        descriptor_types![
             bool, char, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, String
-        ].into_iter().map(|e| (e.descriptor.clone(), e)).collect()
+        ].into_iter().map(|e| (e.descriptor.to_owned(), e)).collect()
     };
 }
 
 impl TryFrom<&str> for Type {
     type Error = TypeError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        // TODO: Type validation.
-        Ok(Type::new_from_descriptor(value.to_owned()))
+        let type_ = DESCRIPTOR_TO_TYPE.get(value);
+        type_.map(|e| e.clone()).ok_or(TypeError)
     }
 }
 
@@ -68,7 +77,7 @@ impl TypeArgs {
         TypeArgs(args)
     }
     pub fn descriptor(&self) -> String {
-        let arg_descriptors: Vec<_> = self.0.iter().map(|e| e.descriptor.as_str()).collect();
+        let arg_descriptors: Vec<_> = self.0.iter().map(|e| e.descriptor).collect();
         format!("<{}>", arg_descriptors.join(", "))
     }
 }

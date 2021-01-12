@@ -450,7 +450,7 @@ mod ffi {
             FfiTransformation::new(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], ())
+        dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
     }
 
     #[no_mangle]
@@ -490,7 +490,7 @@ mod ffi {
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (impute))
+        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (impute))
     }
 
     #[no_mangle]
@@ -566,7 +566,7 @@ mod ffi {
         let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
         let key = ffi_utils::to_str(key);
         let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (input_domain, key, impute))
+        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key, impute))
     }
 
     #[no_mangle]
@@ -596,7 +596,7 @@ mod ffi {
         let type_args = TypeArgs::expect(type_args, 1);
         let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
         let key = ffi_utils::to_str(key);
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, String, u8])], (input_domain, key))
+        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key))
     }
 
     #[no_mangle]
@@ -630,7 +630,7 @@ mod ffi {
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, bool, u8])], (input_domain, lower, upper))
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain, lower, upper))
     }
 
     #[no_mangle]
@@ -658,7 +658,7 @@ mod ffi {
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, u8])], (input_domain))
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain))
     }
 
     #[no_mangle]
@@ -688,7 +688,7 @@ mod ffi {
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], [u32, u64, i32, i64, f32, f64, u8])], (input_domain, sigma))
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain, sigma))
     }
 
     #[no_mangle]
