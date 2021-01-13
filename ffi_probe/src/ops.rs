@@ -7,9 +7,9 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Measurement, Transformation, TransformationPtr, MeasurementPtr};
+use crate::core::{Domain, Measurement, Transformation, TransformationPtr, MeasurementPtr, DomainPtr};
 use crate::data::{Data, Element, Form};
-use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain};
+use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain, AllDomainPtr, VectorDomainPtr, DataDomainPtr, HeterogeneousMapDomainPtr, IntervalDomainPtr};
 
 pub fn make_identity<T: 'static + Form + Clone>() -> Transformation {
     let input_domain = AllDomain::<T>::new();
@@ -21,8 +21,8 @@ pub fn make_identity<T: 'static + Form + Clone>() -> Transformation {
 }
 
 pub fn make_identity_ptr<T: 'static + Form + Clone>() -> TransformationPtr<T, T> {
-    let input_domain = AllDomain::<T>::new();
-    let output_domain = AllDomain::<T>::new();
+    let input_domain = AllDomainPtr::<T>::new();
+    let output_domain = AllDomainPtr::<T>::new();
     let function = |arg: &T| -> T {
         arg.clone()
     };
@@ -54,8 +54,8 @@ pub fn make_split_lines() -> Transformation {
 }
 
 pub fn make_split_lines_ptr() -> TransformationPtr<String, Vec<String>> {
-    let input_domain = AllDomain::<String>::new();
-    let output_domain = VectorDomain::<String>::new_all();
+    let input_domain = AllDomainPtr::<String>::new();
+    let output_domain = VectorDomainPtr::<String>::new_all();
     let function = |arg: &String| -> Vec<String> {
         let ret = split_lines(arg);
         vec_str_to_string(ret)
@@ -88,8 +88,8 @@ pub fn make_parse_series<T>(impute: bool) -> Transformation where
 
 pub fn make_parse_series_ptr<T>(impute: bool) -> TransformationPtr<Vec<String>, Vec<T>> where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-    let input_domain = VectorDomain::<String>::new_all();
-    let output_domain = VectorDomain::<T>::new_all();
+    let input_domain = VectorDomainPtr::<String>::new_all();
+    let output_domain = VectorDomainPtr::<T>::new_all();
     let function = move |arg: &Vec<String>| -> Vec<T> {
         let arg = vec_string_to_str(arg);
         parse_series(&arg, impute)
@@ -121,8 +121,8 @@ pub fn make_split_records(separator: Option<&str>) -> Transformation {
 
 pub fn make_split_records_ptr(separator: Option<&str>) -> TransformationPtr<Vec<String>, Vec<Vec<String>>> {
     let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = VectorDomain::<String>::new_all();
-    let output_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
+    let input_domain = VectorDomainPtr::<String>::new_all();
+    let output_domain = VectorDomainPtr::<Vec<String>>::new(VectorDomainPtr::<String>::new_all());
     let function = move |arg: &Vec<String>| -> Vec<Vec<String>> {
         let arg = vec_string_to_str(arg);
         let ret = split_records(&separator, &arg);
@@ -165,6 +165,13 @@ pub fn create_raw_dataframe_domain(col_count: usize) -> impl Domain {
     HeterogeneousMapDomain::new(element_domains)
 }
 
+pub fn create_raw_dataframe_domain_ptr(col_count: usize) -> impl DomainPtr<Carrier=DataFrame> {
+    let element_domain = DataDomainPtr::<Vec<String>>::new(VectorDomainPtr::<String>::new_all());
+    let element_domain: Box<dyn DomainPtr<Carrier=Data>> = Box::new(element_domain);
+    let element_domains: HashMap<_, _> = (0..col_count).map(|e| (e.to_string(), element_domain.box_clone())).collect();
+    HeterogeneousMapDomainPtr::new(element_domains)
+}
+
 pub fn make_create_dataframe(col_count: usize) -> Transformation {
     let input_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
     let output_domain = create_raw_dataframe_domain(col_count);
@@ -179,8 +186,8 @@ pub fn make_create_dataframe(col_count: usize) -> Transformation {
 }
 
 pub fn make_create_dataframe_ptr(col_count: usize) -> TransformationPtr<Vec<Vec<String>>, DataFrame> {
-    let input_domain = VectorDomain::<Data>::new(DataDomain::new(VectorDomain::<String>::new_all()));
-    let output_domain = create_raw_dataframe_domain(col_count);
+    let input_domain = VectorDomainPtr::<Vec<String>>::new(VectorDomainPtr::<String>::new_all());
+    let output_domain = create_raw_dataframe_domain_ptr(col_count);
     let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
         let arg = arg.into_iter().map(|e| vec_string_to_str(e)).collect();
         create_dataframe(col_count, &arg)
@@ -209,8 +216,8 @@ pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transf
 
 pub fn make_split_dataframe_ptr(separator: Option<&str>, col_count: usize) -> TransformationPtr<String, DataFrame> {
     let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = AllDomain::<String>::new();
-    let output_domain = create_raw_dataframe_domain(col_count);
+    let input_domain = AllDomainPtr::<String>::new();
+    let output_domain = create_raw_dataframe_domain_ptr(col_count);
     let function = move |arg: &String| -> DataFrame {
         split_dataframe(&separator, col_count, &arg)
     };
@@ -252,18 +259,21 @@ pub fn make_parse_column<T>(input_domain: &dyn Domain, key: &str, impute: bool) 
     Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_parse_column_ptr<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> TransformationPtr<DataFrame, DataFrame> where
+pub fn make_parse_column_ptr<T>(input_domain: &dyn DomainPtr<Carrier=DataFrame>, key: &str, impute: bool) -> TransformationPtr<DataFrame, DataFrame> where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let key = key.to_owned();
-    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_parse_column()");
+    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomainPtr>().expect("Bogus input_domain in make_parse_column()");
     // TODO: Assert rest of input_domain is valid.
     let input_domain = input_domain.clone();
-    let output_element_domains = input_domain.element_domains
-        .iter()
-        .map(|(k, v)|
-            if k == &key { (k.clone(), Box::new(DataDomain::new(VectorDomain::<T>::new_all())) as Box<dyn Domain>) } else { (k.clone(), v.box_clone()) })
-        .collect();
-    let output_domain = HeterogeneousMapDomain::new(output_element_domains);
+    let make_element_domain = |k: &String, v: &Box<dyn DomainPtr<Carrier=Data>>| -> Box<dyn DomainPtr<Carrier=Data>> {
+        if k == &key {
+            Box::new(DataDomainPtr::<Vec<T>>::new(VectorDomainPtr::<T>::new_all()))
+        } else {
+            v.box_clone()
+        }
+    };
+    let output_element_domains = input_domain.element_domains.iter().map(|(k, v)| (k.clone(), make_element_domain(k, v))).collect();
+    let output_domain = HeterogeneousMapDomainPtr::new(output_element_domains);
     let function = move |arg: &DataFrame| -> DataFrame {
         parse_column::<T>(&key, impute, arg)
     };
@@ -290,14 +300,14 @@ pub fn make_select_column<T>(input_domain: &dyn Domain, key: &str) -> Transforma
     Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_select_column_ptr<T>(input_domain: &dyn Domain, key: &str) -> TransformationPtr<DataFrame, Vec<T>> where
+pub fn make_select_column_ptr<T>(input_domain: &dyn DomainPtr<Carrier=DataFrame>, key: &str) -> TransformationPtr<DataFrame, Vec<T>> where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
-    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_select_column()");
+    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomainPtr>().expect("Bogus input_domain in make_select_column()");
     let column_domain = input_domain.element_domains.get(&key).expect("Bogus input_domain in make_select_column()");
-    let column_domain = column_domain.as_any().downcast_ref::<DataDomain>().expect("Bogus input_domain in make_select_column()");
+    let column_domain = column_domain.as_any().downcast_ref::<DataDomainPtr<Vec<T>>>().expect("Bogus input_domain in make_select_column()");
     // It's a drag that we need a type argument to get column_domain out. Might want to change Transformation::new() to take Box<dyn Domain> instead of impl Domain.
-    let column_domain = column_domain.form_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_select_column()");
+    let column_domain = column_domain.form_domain.as_any().downcast_ref::<VectorDomainPtr<T>>().expect("Bogus input_domain in make_select_column()");
     let input_domain = input_domain.clone();
     let output_domain = column_domain.clone();
     let function = move |arg: &DataFrame| -> Vec<T> {
@@ -329,11 +339,11 @@ pub fn make_clamp<T>(input_domain: &dyn Domain, lower: T, upper: T) -> Transform
     Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_clamp_ptr<T>(input_domain: &dyn Domain, lower: T, upper: T) -> TransformationPtr<Vec<T>, Vec<T>> where
+pub fn make_clamp_ptr<T>(input_domain: &dyn DomainPtr<Carrier=Vec<T>>, lower: T, upper: T) -> TransformationPtr<Vec<T>, Vec<T>> where
     T: 'static + Element + Copy + PartialEq + PartialOrd {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomainPtr<T>>().expect("Bogus input_domain in make_clamp()");
     let input_domain = input_domain.clone();
-    let output_domain = VectorDomain::<T>::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+    let output_domain = VectorDomainPtr::<T>::new(IntervalDomainPtr::new(Bound::Included(lower), Bound::Included(upper)));
     let function = move |arg: &Vec<T>| -> Vec<T> {
         clamp(lower, upper, arg)
     };
@@ -358,14 +368,14 @@ pub fn make_bounded_sum<T>(input_domain: &dyn Domain) -> Transformation where
     Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_bounded_sum_ptr<T>(input_domain: &dyn Domain) -> TransformationPtr<Vec<T>, T> where
+pub fn make_bounded_sum_ptr<T>(input_domain: &dyn DomainPtr<Carrier=Vec<T>>) -> TransformationPtr<Vec<T>, T> where
     T: 'static + Element + Clone + PartialEq + Sum<T> {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    let input_domain = input_domain.as_any().downcast_ref::<VectorDomainPtr<T>>().expect("Bogus input_domain in make_bounded_sum()");
     let element_domain = &input_domain.element_domain;
-    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
+    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomainPtr<T>>().expect("Bogus input_domain in make_bounded_sum()");
     // TODO: Configure stability from bounds of element_domain.
     let input_domain = input_domain.clone();
-    let output_domain = AllDomain::<T>::new();
+    let output_domain = AllDomainPtr::<T>::new();
     let function = |arg: &Vec<T>| -> T {
         // FIXME: Can't make this work with references, have to clone.
         let arg = arg.clone();
@@ -405,11 +415,11 @@ pub fn make_base_laplace<T>(input_domain: &dyn Domain, sigma: f64) -> Measuremen
     Measurement::new(input_domain, output_domain, function)
 }
 
-pub fn make_base_laplace_ptr<T>(input_domain: &dyn Domain, sigma: f64) -> MeasurementPtr<T, T> where
+pub fn make_base_laplace_ptr<T>(input_domain: &dyn DomainPtr<Carrier=T>, sigma: f64) -> MeasurementPtr<T, T> where
     T: 'static + Element + Copy + PartialEq + AddNoise {
-    let input_domain = input_domain.as_any().downcast_ref::<AllDomain<T>>().expect("Bogus input_domain in make_base_laplace()");
+    let input_domain = input_domain.as_any().downcast_ref::<AllDomainPtr<T>>().expect("Bogus input_domain in make_base_laplace()");
     let input_domain = input_domain.clone();
-    let output_domain = AllDomain::<T>::new();
+    let output_domain = AllDomainPtr::<T>::new();
     let function = move |arg: &T| -> T {
         let noise = laplace(sigma);
         arg.add_noise(noise)
@@ -557,13 +567,15 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_parse_column_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain, key: &str, impute: bool) -> *mut FfiTransformation where
+        fn monomorphize<T>(input_domain: &dyn DomainPtr<Carrier=DataFrame>, key: &str, impute: bool) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
             let transformation = make_parse_column_ptr::<T>(input_domain, key, impute);
             FfiTransformation::new(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        let input_transformation = ffi_utils::as_ref(input_transformation);
+        let input_transformation: &TransformationPtr<(), DataFrame> = input_transformation.as_ref();
+        let input_domain = input_transformation.output_domain.as_ref();
         let key = ffi_utils::to_str(key);
         let impute = ffi_utils::to_bool(impute);
         dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key, impute))
@@ -588,13 +600,15 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_select_column_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain, key: &str) -> *mut FfiTransformation where
+        fn monomorphize<T>(input_domain: &dyn DomainPtr<Carrier=DataFrame>, key: &str) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq {
             let transformation = make_select_column_ptr::<T>(input_domain, key);
             FfiTransformation::new(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
+        let input_transformation = ffi_utils::as_ref(input_transformation);
+        let input_transformation: &TransformationPtr<(), DataFrame> = input_transformation.as_ref();
+        let input_domain = input_transformation.output_domain.as_ref();
         let key = ffi_utils::to_str(key);
         dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key))
     }
@@ -621,16 +635,18 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_clamp_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
+        fn monomorphize<T>(input_transformation: &FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
             T: 'static + Element + Copy + PartialEq + PartialOrd {
+            let input_transformation: &TransformationPtr<(), Vec<T>> = input_transformation.as_ref();
+            let input_domain = input_transformation.output_domain.as_ref();
             let lower = ffi_utils::as_ref(lower as *const T).clone();
             let upper = ffi_utils::as_ref(upper as *const T).clone();
             let transformation = make_clamp_ptr::<T>(input_domain, lower, upper);
             FfiTransformation::new(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain, lower, upper))
+        let input_transformation = ffi_utils::as_ref(input_transformation);
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation, lower, upper))
     }
 
     #[no_mangle]
@@ -651,14 +667,16 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_bounded_sum_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain) -> *mut FfiTransformation where
+        fn monomorphize<T>(input_transformation: &FfiTransformation) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq + Sum {
+            let input_transformation: &TransformationPtr<(), Vec<T>> = input_transformation.as_ref();
+            let input_domain = input_transformation.output_domain.as_ref();
             let transformation = make_bounded_sum_ptr::<T>(input_domain);
             FfiTransformation::new(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain))
+        let input_transformation = ffi_utils::as_ref(input_transformation);
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation))
     }
 
     #[no_mangle]
@@ -681,14 +699,16 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_base_laplace_ptr(type_args: *const c_char, input_transformation: *const FfiTransformation, sigma: f64) -> *mut FfiMeasurement {
-        fn monomorphize<T>(input_domain: &dyn Domain, sigma: f64) -> *mut FfiMeasurement where
+        fn monomorphize<T>(input_transformation: &FfiTransformation, sigma: f64) -> *mut FfiMeasurement where
             T: 'static + Element + Copy + PartialEq + AddNoise {
+            let input_transformation: &TransformationPtr<(), T> = input_transformation.as_ref();
+            let input_domain = input_transformation.output_domain.as_ref();
             let measurement = make_base_laplace_ptr::<T>(input_domain, sigma);
             FfiMeasurement::new(measurement)
         }
         let type_args = TypeArgs::expect(type_args, 1);
-        let input_domain = ffi_utils::as_ref(input_transformation).value.output_domain.as_ref();
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_domain, sigma))
+        let input_transformation = ffi_utils::as_ref(input_transformation);
+        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation, sigma))
     }
 
     #[no_mangle]
@@ -873,7 +893,7 @@ mod tests {
 
     #[test]
     fn test_make_parse_column_ptr() {
-        let input_domain = create_raw_dataframe_domain(2);
+        let input_domain = create_raw_dataframe_domain_ptr(2);
         let transformation = make_parse_column_ptr::<i32>(&input_domain, "1", true);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -911,7 +931,7 @@ mod tests {
 
     #[test]
     fn test_make_parse_columns_ptr() {
-        let input_domain = create_raw_dataframe_domain(3);
+        let input_domain = create_raw_dataframe_domain_ptr(3);
         let transformation0 = make_parse_column_ptr::<i32>(&input_domain, "1", true);
         let transformation1 = make_parse_column_ptr::<f64>(transformation0.output_domain.as_ref(), "2", true);
         let transformation = make_chain_tt_ptr(&transformation1, &transformation0);
@@ -946,7 +966,7 @@ mod tests {
 
     #[test]
     fn test_make_select_column_ptr() {
-        let input_domain = create_raw_dataframe_domain(2);
+        let input_domain = create_raw_dataframe_domain_ptr(2);
         let transformation = make_select_column_ptr::<String>(&input_domain, "1");
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -971,7 +991,7 @@ mod tests {
 
     #[test]
     fn test_make_clamp_ptr() {
-        let input_domain = VectorDomain::<i32>::new_all();
+        let input_domain = VectorDomainPtr::<i32>::new_all();
         let transformation = make_clamp_ptr(&input_domain, 0, 10);
         let arg = vec![-10, -5, 0, 5, 10, 20];
         let ret = transformation.invoke(&arg);
@@ -993,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_make_bounded_sum_ptr() {
-        let input_domain = VectorDomain::<i32>::new(IntervalDomain::<i32>::new(Bound::Included(0), Bound::Included(10)));
+        let input_domain = VectorDomainPtr::<i32>::new(IntervalDomainPtr::<i32>::new(Bound::Included(0), Bound::Included(10)));
         let transformation = make_bounded_sum_ptr::<i32>(&input_domain);
         let arg = vec![1, 2, 3, 4, 5];
         let ret = transformation.invoke(&arg);
@@ -1014,7 +1034,7 @@ mod tests {
 
     #[test]
     fn test_make_base_laplace_ptr() {
-        let input_domain = AllDomain::<f64>::new();
+        let input_domain = AllDomainPtr::<f64>::new();
         let measurement = make_base_laplace_ptr::<f64>(&input_domain, 1.0);
         let arg = 0.0;
         let _ret = measurement.invoke(&arg);

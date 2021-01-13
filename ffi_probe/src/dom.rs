@@ -16,7 +16,7 @@ impl<T> AllDomain<T> {
         AllDomain { _marker: PhantomData }
     }
 }
-impl<T: 'static + Form + Clone> TraitObject for AllDomain<T> {
+impl<T: 'static> TraitObject for AllDomain<T> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
     fn as_any(&self) -> &dyn Any { self }
 }
@@ -104,6 +104,34 @@ impl DomainImpl for DataDomain {
     }
 }
 
+pub struct DataDomainPtr<T> {
+    pub form_domain: Box<dyn DomainPtr<Carrier=T>>,
+}
+impl<T> DataDomainPtr<T> {
+    pub fn new(form_domain: impl DomainPtr<Carrier=T> + 'static) -> DataDomainPtr<T> {
+        DataDomainPtr { form_domain: Box::new(form_domain) }
+    }
+}
+impl<T> Clone for DataDomainPtr<T> {
+    fn clone(&self) -> Self {
+        DataDomainPtr { form_domain: self.form_domain.box_clone() }
+    }
+}
+impl<T: 'static> TraitObject for DataDomainPtr<T> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+    fn as_any(&self) -> &dyn Any { self }
+}
+impl<T: 'static + Form> DomainPtr for DataDomainPtr<T> {
+    type Carrier = Data;
+    fn box_clone(&self) -> Box<dyn DomainPtr<Carrier=Self::Carrier>> { Box::new(self.clone()) }
+    fn check_compatible(&self, other: &dyn DomainPtr<Carrier=Self::Carrier>) -> bool {
+        other.as_any().downcast_ref::<Self>().map_or(false, |o| self.form_domain.check_compatible(&*o.form_domain))
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        let val = val.as_form();
+        self.form_domain.check_valid(val)
+    }
+}
 
 
 /// A Domain that contains all the values in an interval.
@@ -216,7 +244,7 @@ impl<T: 'static + Element + Clone + PartialEq> DomainImpl for PairDomain<T> {
     }
 }
 
-pub struct PairDomainPtr<T0, T1>(Box<dyn DomainPtr<Carrier=T0>>, Box<dyn DomainPtr<Carrier=T1>>);
+pub struct PairDomainPtr<T0, T1>(pub Box<dyn DomainPtr<Carrier=T0>>, pub Box<dyn DomainPtr<Carrier=T1>>);
 impl<T0, T1> PairDomainPtr<T0, T1> {
     pub fn new(element_domain0: impl DomainPtr<Carrier=T0> + 'static, element_domain1: impl DomainPtr<Carrier=T1> + 'static) -> PairDomainPtr<T0, T1> {
         PairDomainPtr(Box::new(element_domain0), Box::new(element_domain1))
