@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use crate::data::{Data, Form, TraitObject};
-use crate::dom::{AllDomainPtr, PairDomain};
+use crate::data::TraitObject;
+use crate::dom::AllDomainPtr;
 use crate::ffi_utils;
 
 
@@ -20,20 +20,6 @@ pub trait StabilityRelation {
     fn evaluate(&self, input_distance: &dyn Distance, output_distance: &dyn Distance) -> bool;
 }
 
-pub trait Domain: TraitObject {
-    fn box_clone(&self) -> Box<dyn Domain>; // IMPLEMENTATION DETAIL, PLEASE IGNORE.
-    fn check_compatible(&self, other: &dyn Domain) -> bool;
-    fn check_valid(&self, val: &Data) -> bool;
-}
-// IMPLEMENTATION DETAIL, PLEASE IGNORE.
-/// A smaller trait for the type-specific Domain stuff. I haven't figured out a way to dispatch
-/// directly to one of these in check_valid() (avoiding the wrapping), but keeping it as a separate
-/// trait for now.
-pub trait DomainImpl {
-    type Carrier: 'static + Form;
-    fn check_valid_impl(&self, val: &Self::Carrier) -> bool;
-}
-
 pub trait DomainPtr: TraitObject {
     type Carrier;
     fn box_clone(&self) -> Box<dyn DomainPtr<Carrier=Self::Carrier>>;
@@ -43,31 +29,6 @@ pub trait DomainPtr: TraitObject {
 
 
 // MEASUREMENTS & TRANSFORMATIONS
-pub struct Measurement {
-    pub input_domain: Box<dyn Domain>,
-    pub input_metric: Box<dyn Metric>,
-    pub output_domain: Box<dyn Domain>,
-    pub output_measure: Box<dyn Measure>,
-    pub privacy_relation: Box<dyn PrivacyRelation>,
-    pub function: Rc<dyn Fn(&Data) -> Data>,
-}
-
-impl Measurement {
-    pub fn new(input_domain: impl Domain + 'static, output_domain: impl Domain + 'static, function: impl Fn(&Data) -> Data + 'static) -> Measurement {
-        Measurement {
-            input_domain: Box::new(input_domain),
-            input_metric: Box::new(dummy::DummyMetric),
-            output_domain: Box::new(output_domain),
-            output_measure: Box::new(dummy::DummyMeasure),
-            privacy_relation: Box::new(dummy::DummyPrivacyRelation),
-            function: Rc::new(function)
-        }
-    }
-    pub fn invoke(&self, arg: &Data) -> Data {
-        (self.function)(arg)
-    }
-}
-
 pub struct MeasurementPtr<I, O> {
     pub input_domain: Box<dyn DomainPtr<Carrier=I>>,
     pub input_metric: Box<dyn Metric>,
@@ -102,31 +63,6 @@ impl<I, O> MeasurementPtr<I, O> {
 
     pub fn invoke_ffi(&self, arg: &Box<I>) -> Box<O> {
         let arg = arg.as_ref() as *const I;
-        (self.function)(arg)
-    }
-}
-
-pub struct Transformation {
-    pub input_domain: Box<dyn Domain>,
-    pub input_metric: Box<dyn Metric>,
-    pub output_domain: Box<dyn Domain>,
-    pub output_metric: Box<dyn Metric>,
-    pub stability_relation: Box<dyn StabilityRelation>,
-    pub function: Rc<dyn Fn(&Data) -> Data>,
-}
-
-impl Transformation {
-    pub fn new(input_domain: impl Domain + 'static, output_domain: impl Domain + 'static, function: impl Fn(&Data) -> Data + 'static) -> Transformation {
-        Transformation {
-            input_domain: Box::new(input_domain),
-            input_metric: Box::new(dummy::DummyMetric),
-            output_domain: Box::new(output_domain),
-            output_metric: Box::new(dummy::DummyMetric),
-            stability_relation: Box::new(dummy::DummyStabilityRelation),
-            function: Rc::new(function)
-        }
-    }
-    pub fn invoke(&self, arg: &Data) -> Data {
         (self.function)(arg)
     }
 }
@@ -171,28 +107,6 @@ impl<I, O> TransformationPtr<I, O> {
 
 
 // CHAINING & COMPOSITION
-pub fn make_chain_mt(measurement: Measurement, transformation: Transformation) -> Measurement {
-    // It's annoying that the arguments are moves rather than borrows, but this is necessary because the functions
-    // need to be moved into the new closure. The only alternative I could work out was to have the arguments
-    // be references with 'static lifetime, but that seemed even worse.
-    assert!(transformation.output_domain.check_compatible(measurement.input_domain.as_ref()));
-    let input_domain = transformation.input_domain;
-    let output_domain = measurement.output_domain;
-    let function0 = transformation.function;
-    let function1 = measurement.function;
-    let function = Rc::new(move |arg: &Data| -> Data {
-        function1(&function0(arg))
-    });
-    Measurement {
-        input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
-        output_domain: output_domain,
-        output_measure: Box::new(dummy::DummyMeasure),
-        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
-        function: function
-    }
-}
-
 pub fn make_chain_mt_ptr<I: 'static, X: 'static, O: 'static>(measurement: &MeasurementPtr<X, O>, transformation: &TransformationPtr<I, X>) -> MeasurementPtr<I, O> {
     assert!(transformation.output_domain.check_compatible(measurement.input_domain.as_ref()));
     let input_domain = transformation.input_domain.box_clone();
@@ -214,28 +128,6 @@ pub fn make_chain_mt_ptr<I: 'static, X: 'static, O: 'static>(measurement: &Measu
     }
 }
 
-pub fn make_chain_tt(transformation1: Transformation, transformation0: Transformation) -> Transformation {
-    // It's annoying that the arguments are moves rather than borrows, but this is necessary because the functions
-    // need to be moved into the new closure. The only alternative I could work out was to have the arguments
-    // be references with 'static lifetime, but that seemed even worse.
-    assert!(transformation0.output_domain.check_compatible(transformation1.input_domain.as_ref()));
-    let input_domain = transformation0.input_domain;
-    let output_domain = transformation1.output_domain;
-    let function0 = transformation0.function;
-    let function1 = transformation1.function;
-    let function = Rc::new(move |arg: &Data| -> Data {
-        function1(&function0(arg))
-    });
-    Transformation {
-        input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
-        output_domain: output_domain,
-        output_metric: Box::new(dummy::DummyMetric),
-        stability_relation: Box::new(dummy::DummyStabilityRelation),
-        function: function
-    }
-}
-
 pub fn make_chain_tt_ptr<I: 'static, X: 'static, O: 'static>(transformation1: &TransformationPtr<X, O>, transformation0: &TransformationPtr<I, X>) -> TransformationPtr<I, O> {
     assert!(transformation0.output_domain.check_compatible(transformation1.input_domain.as_ref()));
     let input_domain = transformation0.input_domain.box_clone();
@@ -254,30 +146,6 @@ pub fn make_chain_tt_ptr<I: 'static, X: 'static, O: 'static>(transformation1: &T
         output_metric: Box::new(dummy::DummyMetric),
         stability_relation: Box::new(dummy::DummyStabilityRelation),
         function: Rc::new(function)
-    }
-}
-
-pub fn make_composition(measurement0: Measurement, measurement1: Measurement) -> Measurement {
-    assert!(measurement0.input_domain.check_compatible(measurement1.input_domain.as_ref()));
-    let input_domain = measurement0.input_domain;
-    let output_domain0 = measurement0.output_domain;
-    let output_domain1 = measurement1.output_domain;
-    let output_domain = Box::new(PairDomain::<Data>::new(output_domain0, output_domain1));
-    let function0 = measurement0.function;
-    let function1 = measurement1.function;
-    let function = Rc::new(move |arg: &Data| -> Data {
-        let ret0 = function0(arg);
-        let ret1 = function1(arg);
-        let ret = (ret0, ret1);
-        Data::new(ret)
-    });
-    Measurement {
-        input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
-        output_domain: output_domain,
-        output_measure: Box::new(dummy::DummyMeasure),
-        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
-        function: function
     }
 }
 
@@ -311,9 +179,9 @@ pub(crate) mod ffi {
     use std::os::raw::c_char;
 
     use crate::ffi_utils;
+    use crate::mono::Type;
 
     use super::*;
-    use crate::mono::Type;
 
     pub struct FfiObject {
         pub type_: Type,
@@ -401,14 +269,6 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__measurement_invoke(this: *const Measurement, arg: *mut Data) -> *mut Data {
-        let this = ffi_utils::as_ref(this);
-        let arg = ffi_utils::as_ref(arg);
-        let ret = this.invoke(arg);
-        ffi_utils::into_raw(ret)
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__measurement_invoke_ptr(this: *const FfiMeasurement, arg: *const FfiObject) -> *mut FfiObject {
         let this = ffi_utils::as_ref(this);
         let arg = ffi_utils::as_ref(arg);
@@ -419,21 +279,8 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__measurement_free(this: *mut Measurement) {
-        ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__measurement_free_ptr(this: *mut FfiMeasurement) {
         ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__transformation_invoke(this: *const Transformation, arg: *mut Data) -> *mut Data {
-        let this = ffi_utils::as_ref(this);
-        let arg = ffi_utils::as_ref(arg);
-        let ret = this.invoke(arg);
-        ffi_utils::into_raw(ret)
     }
 
     #[no_mangle]
@@ -447,21 +294,8 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__transformation_free(this: *mut Transformation) {
-        ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__transformation_free_ptr(this: *mut FfiTransformation) {
         ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__make_chain_mt(measurement: *mut Measurement, transformation: *mut Transformation) -> *mut Measurement {
-        let measurement = ffi_utils::into_owned(measurement);
-        let transformation = ffi_utils::into_owned(transformation);
-        let ret = make_chain_mt(measurement, transformation);
-        ffi_utils::into_raw(ret)
     }
 
     #[no_mangle]
@@ -476,14 +310,6 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__make_chain_tt(transformation1: *mut Transformation, transformation0: *mut Transformation) -> *mut Transformation {
-        let transformation1 = ffi_utils::into_owned(transformation1);
-        let transformation0 = ffi_utils::into_owned(transformation0);
-        let ret = make_chain_tt(transformation1, transformation0);
-        ffi_utils::into_raw(ret)
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_tt_ptr(transformation1: *mut FfiTransformation, transformation0: *mut FfiTransformation) -> *mut FfiTransformation {
         let transformation0 = ffi_utils::into_owned(transformation0);
         let transformation1 = ffi_utils::into_owned(transformation1);
@@ -492,14 +318,6 @@ pub(crate) mod ffi {
         let output_type = transformation1.output_type.clone();
         let transformation = super::make_chain_tt_ptr(&transformation1.value, &transformation0.value);
         FfiTransformation::new_typed(input_type, output_type, transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__make_composition(measurement0: *mut Measurement, measurement1: *mut Measurement) -> *mut Measurement {
-        let measurement0 = ffi_utils::into_owned(measurement0);
-        let measurement1 = ffi_utils::into_owned(measurement1);
-        let ret = make_composition(measurement0, measurement1);
-        ffi_utils::into_raw(ret)
     }
 
     #[no_mangle]
@@ -536,20 +354,9 @@ r#"{
 // UNIT TESTS
 #[cfg(test)]
 mod tests {
-    use crate::dom::{AllDomain, AllDomainPtr};
+    use crate::dom::AllDomainPtr;
 
     use super::*;
-
-    #[test]
-    fn test_identity() {
-        let input_domain = AllDomain::<i32>::new();
-        let output_domain = AllDomain::<i32>::new();
-        let identity = Transformation::new(input_domain, output_domain, |arg| Data::new(arg.as_form::<i32>().clone()));
-        let arg = Data::new(10);
-        let ret = identity.invoke(&arg);
-        let ret: i32 = ret.into_form();
-        assert_eq!(ret, 10);
-    }
 
     #[test]
     fn test_identity_ptr() {
@@ -558,8 +365,6 @@ mod tests {
         let ret = identity.invoke(&arg);
         assert_eq!(ret, 99);
     }
-
-    // TODO: test_make_chain_mt
 
     #[test]
     fn test_make_chain_mt_ptr() {
@@ -572,18 +377,6 @@ mod tests {
     }
 
     #[test]
-    fn test_make_chain_tt() {
-        let domain = AllDomain::<Data>::new();
-        let transformation0 = Transformation::new(domain.clone(), domain.clone(), |arg| Data::new(arg.as_form::<i32>() + 1));
-        let transformation1 = Transformation::new(domain.clone(), domain.clone(), |arg| Data::new(arg.as_form::<i32>() - 1));
-        let chain = make_chain_tt(transformation1, transformation0);
-        let arg = Data::new(10);
-        let ret = chain.invoke(&arg);
-        let ret: i32 = ret.into_form();
-        assert_eq!(ret, ret);
-    }
-
-    #[test]
     fn test_make_chain_tt_ptr() {
         let transformation0 = TransformationPtr::new(AllDomainPtr::<u8>::new(), AllDomainPtr::<i32>::new(), |a: &u8| (a + 1) as i32);
         let transformation1 = TransformationPtr::new(AllDomainPtr::<i32>::new(), AllDomainPtr::<f64>::new(), |a: &i32| (a + 1) as f64);
@@ -591,19 +384,6 @@ mod tests {
         let arg = 99_u8;
         let ret = chain.invoke(&arg);
         assert_eq!(ret, 101.0);
-    }
-
-    #[test]
-    fn test_make_composition() {
-        let domain = AllDomain::<i32>::new();
-        let measurement0 = Measurement::new(domain.clone(), domain.clone(), |arg| Data::new(arg.as_form::<i32>() + 1));
-        let measurement1 = Measurement::new(domain.clone(), domain.clone(), |arg| Data::new(arg.as_form::<i32>() - 1));
-        let chain = make_composition(measurement0, measurement1);
-        let arg = Data::new(10);
-        let ret = chain.invoke(&arg);
-        let ret: (Data, Data) = ret.into_form();
-        let ret: (i32, i32) = (ret.0.into_form(), ret.1.into_form());
-        assert_eq!(ret, (11, 9));
     }
 
     #[test]
@@ -622,6 +402,7 @@ mod tests {
 // PLACEHOLDERS
 mod dummy {
     use super::*;
+
     // pub struct DummyDistance;
     // impl Distance for DummyDistance {}
     pub struct DummyMetric;

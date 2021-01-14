@@ -111,31 +111,15 @@ impl PartialEq for Data {
 pub mod ffi {
     use std::os::raw::c_char;
 
+    use crate::core::ffi::FfiObject;
     use crate::ffi_utils;
 
     use super::*;
-    use crate::core::ffi::FfiObject;
-
-    #[no_mangle]
-    pub extern "C" fn opendp_data__from_string(p: *const c_char) -> *mut Data {
-        let s = ffi_utils::to_str(p).to_owned();
-        let data = Data::new(s);
-        ffi_utils::into_raw(data)
-    }
 
     #[no_mangle]
     pub extern "C" fn opendp_data__from_string_ptr(p: *const c_char) -> *mut FfiObject {
         let s = ffi_utils::to_str(p).to_owned();
         FfiObject::new(s)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_data__to_string(this: *const Data) -> *const c_char {
-        let this = ffi_utils::as_ref(this);
-        // FIXME: This probably isn't the right way to do this, but not sure how to get to_string() on Data.
-        let string: String = format!("{:?}", this);
-        // FIXME: Leaks string.
-        ffi_utils::into_c_char_p(string)
     }
 
     #[no_mangle]
@@ -157,11 +141,6 @@ pub mod ffi {
             (Box<i32>, Box<f64>),
             (Box<(Box<f64>, Box<f64>)>, Box<f64>)
         ])], (this))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_data__data_free(this: *mut Data) {
-        ffi_utils::into_owned(this);
     }
 
     #[no_mangle]
