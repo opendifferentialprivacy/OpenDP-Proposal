@@ -51,8 +51,6 @@ class Mod:
     def _get_function(self, spec):
         name = spec["name"]
         symbol = self.prefix + name
-        if name != "bootstrap":
-            symbol += "_ptr"
         function = self.lib[symbol]
         function.argtypes = [self.get_type(arg[0]) for arg in spec.get("args", [])]
         function.restype = self.get_type(spec.get("ret", "void"))

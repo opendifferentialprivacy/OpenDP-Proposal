@@ -117,13 +117,13 @@ pub mod ffi {
     use super::*;
 
     #[no_mangle]
-    pub extern "C" fn opendp_data__from_string_ptr(p: *const c_char) -> *mut FfiObject {
+    pub extern "C" fn opendp_data__from_string(p: *const c_char) -> *mut FfiObject {
         let s = ffi_utils::to_str(p).to_owned();
         FfiObject::new(s)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_data__to_string_ptr(this: *const FfiObject) -> *const c_char {
+    pub extern "C" fn opendp_data__to_string(this: *const FfiObject) -> *const c_char {
         fn monomorphize<T: std::fmt::Debug>(this: &FfiObject) -> *const c_char {
             let this = this.as_ref::<T>();
             // FIXME: Figure out how to implement general to_string().
@@ -144,7 +144,7 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_data__data_free_ptr(this: *mut FfiObject) {
+    pub extern "C" fn opendp_data__data_free(this: *mut FfiObject) {
         ffi_utils::into_owned(this);
     }
 
