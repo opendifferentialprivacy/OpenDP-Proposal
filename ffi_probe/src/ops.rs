@@ -202,7 +202,6 @@ fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
         if x < lower { lower } else if x > upper { upper } else { x }
     }
     x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
-
 }
 
 pub fn make_clamp<T>(input_domain: &dyn Domain<Carrier=Vec<T>>, lower: T, upper: T) -> Transformation<Vec<T>, Vec<T>> where

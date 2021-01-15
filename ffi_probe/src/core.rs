@@ -8,16 +8,70 @@ use crate::ffi_utils;
 // BUILDING BLOCKS
 pub trait Distance {}  // PLACEHOLDER
 
-pub trait Metric {}    // PLACEHOLDER
+// // Option 1: associated type
+// pub trait Metric {
+//     type MyDistance: Distance;
+// }    // PLACEHOLDER
+//
+// struct L1<T> {
+// }
+// impl<T: Distance> Metric for L1<T> {
+//     type MyDistance = T;
+// }
+//
+// pub trait Measure {
+//     type MyDistance: Distance;
+// }   // PLACEHOLDER
+//
+// struct Hamming<T> { distance: PhantomData<T> }
+// impl<T> Metric for Hamming<T> { type MyDistance = T; }
+//
+// struct Symmetric<T> {distance: PhantomData<T> }
+// impl<T> Metric for Symmetric<T> { type MyDistance = T; }
+//
+// // Option 2: enum type
+// // is it really any better than option 1?
+// enum Metric<T> {
+//     Hamming(T), Symmetric(T),
+// }
 
-pub trait Measure {}   // PLACEHOLDER
+// // Option 3: completely erase type
+// // Will be difficult to downcast from
+// // could potentially use the generic type of the data to only downcast once (for eg. sum relation)
+// pub trait Metric {}
+
+
+// Option 4: Metrics are instances of single struct, distinguished by identity
+// Have to do comparison by pointer checks
+// struct Metric<T: Distance> {
+//     value: PhantomData<T>
+// }
+//
+// static HAMMING: Metric<i32> = Metric {value: PhantomData()};
+// static SYMMETRIC: Metric<i32> = Metric {value: PhantomData<i32>};
+// static L1_INT32: Metric<i32> = Metric {value: PhantomData<i32>};
+// static L1_FLOAT64: Metric<f32> = Metric {value: PhantomData<i32>};
+
+pub trait Metric {
+    type Distance;
+    fn box_clone(&self) -> Box<dyn Metric<Distance=Self::Distance>>;
+}
+
+pub trait Measure {
+    type Distance;
+    fn box_clone(&self) -> Box<dyn Measure<Distance=Self::Distance>>;
+}
 
 pub trait PrivacyRelation {
-    fn evaluate(&self, input_distance: &dyn Distance, output_distance: &dyn Distance) -> bool;
+    type InputDistance;
+    type OutputDistance;
+    fn evaluate(&self, input_distance: &Self::InputDistance, output_distance: &Self::OutputDistance) -> bool;
 }
 
 pub trait StabilityRelation {
-    fn evaluate(&self, input_distance: &dyn Distance, output_distance: &dyn Distance) -> bool;
+    type InputDistance;
+    type OutputDistance;
+    fn evaluate(&self, input_distance: &Self::InputDistance, output_distance: &Self::OutputDistance) -> bool;
 }
 
 pub trait Domain: TraitObject {
@@ -29,17 +83,31 @@ pub trait Domain: TraitObject {
 
 
 // MEASUREMENTS & TRANSFORMATIONS
-pub struct Measurement<I, O> {
+pub struct Measurement<I, O, ID=(), OD=()> {
     pub input_domain: Box<dyn Domain<Carrier=I>>,
-    pub input_metric: Box<dyn Metric>,
+    pub input_metric: Box<dyn Metric<Distance=ID>>,
     pub output_domain: Box<dyn Domain<Carrier=O>>,
-    pub output_measure: Box<dyn Measure>,
-    pub privacy_relation: Box<dyn PrivacyRelation>,
+    pub output_measure: Box<dyn Measure<Distance=OD>>,
+    pub privacy_relation: Box<dyn PrivacyRelation<InputDistance=ID, OutputDistance=OD>>,
     function: Rc<dyn Fn(*const I) -> Box<O>>,
 }
 
-impl<I, O> Measurement<I, O> {
-    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Measurement<I, O> {
+impl<I, O, ID: 'static, OD: 'static> Measurement<I, O, ID, OD> {
+    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Self {
+        let input_metric = dummy::DummyMetric::<ID>::new();
+        let output_measure = dummy::DummyMeasure::<OD>::new();
+        let privacy_relation = dummy::DummyPrivacyRelation::new();
+        Self::new_all(input_domain, input_metric, output_domain, output_measure, privacy_relation, function)
+    }
+
+    pub fn new_all(
+        input_domain: impl Domain<Carrier=I> + 'static,
+        input_metric: impl Metric<Distance=ID> + 'static,
+        output_domain: impl Domain<Carrier=O> + 'static,
+        output_measure: impl Measure<Distance=OD> + 'static,
+        privacy_relation: impl PrivacyRelation<InputDistance=ID, OutputDistance=OD> + 'static,
+        function: impl Fn(&I) -> O + 'static
+    ) -> Measurement<I, O, ID, OD> {
         let function = move |arg: *const I| -> Box<O> {
             let arg = ffi_utils::as_ref(arg);
             let res = function(arg);
@@ -47,10 +115,10 @@ impl<I, O> Measurement<I, O> {
         };
         Measurement {
             input_domain: Box::new(input_domain),
-            input_metric: Box::new(dummy::DummyMetric),
+            input_metric: Box::new(input_metric),
             output_domain: Box::new(output_domain),
-            output_measure: Box::new(dummy::DummyMeasure),
-            privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+            output_measure: Box::new(output_measure),
+            privacy_relation: Box::new(privacy_relation),
             function: Rc::new(function)
         }
     }
@@ -67,17 +135,31 @@ impl<I, O> Measurement<I, O> {
     }
 }
 
-pub struct Transformation<I, O> {
+pub struct Transformation<I, O, ID=(), OD=()> {
     pub input_domain: Box<dyn Domain<Carrier=I>>,
-    pub input_metric: Box<dyn Metric>,
+    pub input_metric: Box<dyn Metric<Distance=ID>>,
     pub output_domain: Box<dyn Domain<Carrier=O>>,
-    pub output_metric: Box<dyn Metric>,
-    pub stability_relation: Box<dyn StabilityRelation>,
+    pub output_metric: Box<dyn Metric<Distance=OD>>,
+    pub stability_relation: Box<dyn StabilityRelation<InputDistance=ID, OutputDistance=OD>>,
     function: Rc<dyn Fn(*const I) -> Box<O>>,
 }
 
-impl<I, O> Transformation<I, O> {
-    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Transformation<I, O> {
+impl<I, O, ID: 'static, OD: 'static> Transformation<I, O, ID, OD> {
+    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Transformation<I, O, ID, OD> {
+        let input_metric = dummy::DummyMetric::<ID>::new();
+        let output_metric = dummy::DummyMetric::<OD>::new();
+        let stability_relation = dummy::DummyStabilityRelation::<ID, OD>::new();
+        Self::new_all(input_domain, input_metric, output_domain, output_metric, stability_relation, function)
+    }
+
+    pub fn new_all(
+        input_domain: impl Domain<Carrier=I> + 'static,
+        input_metric: impl Metric<Distance=ID> + 'static,
+        output_domain: impl Domain<Carrier=O> + 'static,
+        output_metric: impl Metric<Distance=OD> + 'static,
+        stability_relation: impl StabilityRelation<InputDistance=ID, OutputDistance=OD> + 'static,
+        function: impl Fn(&I) -> O + 'static
+    ) -> Self {
         let function = move |arg: *const I| -> Box<O> {
             let arg = ffi_utils::as_ref(arg);
             let res = function(arg);
@@ -85,10 +167,10 @@ impl<I, O> Transformation<I, O> {
         };
         Transformation {
             input_domain: Box::new(input_domain),
-            input_metric: Box::new(dummy::DummyMetric),
+            input_metric: Box::new(input_metric),
             output_domain: Box::new(output_domain),
-            output_metric: Box::new(dummy::DummyMetric),
-            stability_relation: Box::new(dummy::DummyStabilityRelation),
+            output_metric: Box::new(output_metric),
+            stability_relation: Box::new(stability_relation),
             function: Rc::new(function)
         }
     }
@@ -110,7 +192,9 @@ impl<I, O> Transformation<I, O> {
 pub fn make_chain_mt<I: 'static, X: 'static, O: 'static>(measurement: &Measurement<X, O>, transformation: &Transformation<I, X>) -> Measurement<I, O> {
     assert!(transformation.output_domain.check_compatible(measurement.input_domain.as_ref()));
     let input_domain = transformation.input_domain.box_clone();
+    let input_metric = transformation.input_metric.box_clone();
     let output_domain = measurement.output_domain.box_clone();
+    let output_measure = measurement.output_measure.box_clone();
     let function0 = transformation.function.clone();
     let function1 = measurement.function.clone();
     let function = move |arg: *const I| -> Box<O> {
@@ -120,10 +204,10 @@ pub fn make_chain_mt<I: 'static, X: 'static, O: 'static>(measurement: &Measureme
     let function = Box::new(function);
     Measurement {
         input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
+        input_metric: input_metric,
         output_domain: output_domain,
-        output_measure: Box::new(dummy::DummyMeasure),
-        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+        output_measure: output_measure,
+        privacy_relation: Box::new(dummy::DummyPrivacyRelation::new()),
         function: Rc::new(function)
     }
 }
@@ -131,7 +215,9 @@ pub fn make_chain_mt<I: 'static, X: 'static, O: 'static>(measurement: &Measureme
 pub fn make_chain_tt<I: 'static, X: 'static, O: 'static>(transformation1: &Transformation<X, O>, transformation0: &Transformation<I, X>) -> Transformation<I, O> {
     assert!(transformation0.output_domain.check_compatible(transformation1.input_domain.as_ref()));
     let input_domain = transformation0.input_domain.box_clone();
+    let input_metric = transformation0.input_metric.box_clone();
     let output_domain = transformation1.output_domain.box_clone();
+    let output_metric = transformation1.output_metric.box_clone();
     let function0 = transformation0.function.clone();
     let function1 = transformation1.function.clone();
     let function = move |arg: *const I| -> Box<O> {
@@ -141,10 +227,10 @@ pub fn make_chain_tt<I: 'static, X: 'static, O: 'static>(transformation1: &Trans
     let function = Box::new(function);
     Transformation {
         input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
+        input_metric: input_metric,
         output_domain: output_domain,
-        output_metric: Box::new(dummy::DummyMetric),
-        stability_relation: Box::new(dummy::DummyStabilityRelation),
+        output_metric: output_metric,
+        stability_relation: Box::new(dummy::DummyStabilityRelation::new()),
         function: Rc::new(function)
     }
 }
@@ -152,10 +238,14 @@ pub fn make_chain_tt<I: 'static, X: 'static, O: 'static>(transformation1: &Trans
 pub fn make_composition<I: 'static, OA: 'static, OB: 'static>(measurement0: &Measurement<I, OA>, measurement1: &Measurement<I, OB>) -> Measurement<I, (Box<OA>, Box<OB>)> {
     assert!(measurement0.input_domain.check_compatible(measurement1.input_domain.as_ref()));
     let input_domain = measurement0.input_domain.box_clone();
+    // TODO: Figure out input_metric for composition.
+    let input_metric = measurement0.input_metric.box_clone();
     let _output_domain0 = measurement0.output_domain.box_clone();
     let _output_domain1 = measurement1.output_domain.box_clone();
-    // FIXME: Figure out output_domain for composition.
+    // TODO: Figure out output_domain for composition.
     let output_domain = Box::new(AllDomain::<(Box<OA>, Box<OB>)>::new());
+    // TODO: Figure out output_measure for composition.
+    let output_measure = measurement0.output_measure.box_clone();
     let function0 = measurement0.function.clone();
     let function1 = measurement1.function.clone();
     let function = move |arg: *const I| -> Box<(Box<OA>, Box<OB>)> {
@@ -165,10 +255,10 @@ pub fn make_composition<I: 'static, OA: 'static, OB: 'static>(measurement0: &Mea
     };
     Measurement {
         input_domain: input_domain,
-        input_metric: Box::new(dummy::DummyMetric),
+        input_metric: input_metric,
         output_domain: output_domain,
-        output_measure: Box::new(dummy::DummyMeasure),
-        privacy_relation: Box::new(dummy::DummyPrivacyRelation),
+        output_measure: output_measure,
+        privacy_relation: Box::new(dummy::DummyPrivacyRelation::new()),
         function: Rc::new(function)
     }
 }
@@ -360,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_identity() {
-        let identity = Transformation::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
+        let identity = Transformation::<i32, i32, (), ()>::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
         let arg = 99;
         let ret = identity.invoke(&arg);
         assert_eq!(ret, 99);
@@ -402,15 +492,73 @@ mod tests {
 // PLACEHOLDERS
 mod dummy {
     use super::*;
+    use std::marker::PhantomData;
 
-    // pub struct DummyDistance;
-    // impl Distance for DummyDistance {}
-    pub struct DummyMetric;
-    impl Metric for DummyMetric {}
-    pub struct DummyMeasure;
-    impl Measure for DummyMeasure {}
-    pub struct DummyPrivacyRelation;
-    impl PrivacyRelation for DummyPrivacyRelation { fn evaluate(&self, _input_distance: &dyn Distance, _output_distance: &dyn Distance) -> bool { false } }
-    pub struct DummyStabilityRelation;
-    impl StabilityRelation for DummyStabilityRelation { fn evaluate(&self, _input_distance: &dyn Distance, _output_distance: &dyn Distance) -> bool { false } }
+    pub struct DummyMetric<T> {
+        _marker: PhantomData<T>
+    }
+    impl<T> DummyMetric<T> {
+        pub fn new() -> Self {
+            DummyMetric { _marker: PhantomData }
+        }
+    }
+    impl<T> Clone for DummyMetric<T> {
+        fn clone(&self) -> Self { Self::new() }
+    }
+    impl<T: 'static> Metric for DummyMetric<T> {
+        type Distance=T;
+        fn box_clone(&self) -> Box<dyn Metric<Distance=Self::Distance>> { Box::new(self.clone()) }
+    }
+
+    pub struct DummyMeasure<T> {
+        _marker: PhantomData<T>
+    }
+    impl<T> DummyMeasure<T> {
+        pub fn new() -> Self {
+            DummyMeasure { _marker: PhantomData }
+        }
+    }
+    impl<T> Clone for DummyMeasure<T> {
+        fn clone(&self) -> Self { Self::new() }
+    }
+    impl<T: 'static> Measure for DummyMeasure<T> {
+        type Distance=T;
+        fn box_clone(&self) -> Box<dyn Measure<Distance=Self::Distance>> { Box::new(self.clone()) }
+    }
+
+    pub struct DummyPrivacyRelation<I, O> {
+        _marker_i: PhantomData<I>,
+        _marker_o: PhantomData<O>,
+    }
+    impl<I, O> DummyPrivacyRelation<I, O> {
+        pub fn new() -> Self {
+            DummyPrivacyRelation { _marker_i: PhantomData, _marker_o: PhantomData }
+        }
+    }
+    impl<I, O> Clone for DummyPrivacyRelation<I, O> {
+        fn clone(&self) -> Self { Self::new() }
+    }
+    impl<I, O> PrivacyRelation for DummyPrivacyRelation<I, O> {
+        type InputDistance = I;
+        type OutputDistance = O;
+        fn evaluate(&self, _input_distance: &Self::InputDistance, _output_distance: &Self::OutputDistance) -> bool { false }
+    }
+
+    pub struct DummyStabilityRelation<I, O> {
+        _marker_i: PhantomData<I>,
+        _marker_o: PhantomData<O>,
+    }
+    impl<I, O> DummyStabilityRelation<I, O> {
+        pub fn new() -> Self {
+            DummyStabilityRelation { _marker_i: PhantomData, _marker_o: PhantomData }
+        }
+    }
+    impl<I, O> Clone for DummyStabilityRelation<I, O> {
+        fn clone(&self) -> Self { Self::new() }
+    }
+    impl<I, O> StabilityRelation for DummyStabilityRelation<I, O> {
+        type InputDistance = I;
+        type OutputDistance = O;
+        fn evaluate(&self, _input_distance: &Self::InputDistance, _output_distance: &Self::OutputDistance) -> bool { false }
+    }
 }
