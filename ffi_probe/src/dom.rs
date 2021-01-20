@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Bound;
 
-use crate::core::Domain;
+use crate::core::{Domain, DomainAlt};
 use crate::data::{Data, Form, TraitObject};
 
 
@@ -37,6 +37,25 @@ impl<T: 'static> Domain for AllDomain<T> {
     fn check_valid(&self, _val: &Self::Carrier) -> bool { true }
 }
 
+pub struct AllDomainAlt<T> {
+    _marker: PhantomData<T>,
+}
+impl<T> AllDomainAlt<T> {
+    pub fn new() -> AllDomainAlt<T> {
+        AllDomainAlt { _marker: PhantomData }
+    }
+}
+impl<T> Clone for AllDomainAlt<T> {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+impl<T> DomainAlt for AllDomainAlt<T> {
+    type Carrier = T;
+    fn check_compatible(&self, _other: &Self) -> bool { true }
+    fn check_valid(&self, _val: &Self::Carrier) -> bool { true }
+}
+
 
 /// A Domain that unwraps a Data wrapper.
 pub struct DataDomain<T> {
@@ -61,6 +80,31 @@ impl<T: 'static + Form> Domain for DataDomain<T> {
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         other.as_any().downcast_ref::<Self>().map_or(false, |o| self.form_domain.check_compatible(&*o.form_domain))
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        let val = val.as_form();
+        self.form_domain.check_valid(val)
+    }
+}
+
+pub struct DataDomainAlt<D: DomainAlt> {
+    pub form_domain: D,
+}
+impl<D: DomainAlt> DataDomainAlt<D> {
+    pub fn new(form_domain: D) -> DataDomainAlt<D> {
+        DataDomainAlt { form_domain }
+    }
+}
+impl<D: DomainAlt> Clone for DataDomainAlt<D> {
+    fn clone(&self) -> Self {
+        DataDomainAlt::new(self.form_domain.clone())
+    }
+}
+impl<D: DomainAlt> DomainAlt for DataDomainAlt<D> where
+    D::Carrier: 'static + Form {
+    type Carrier = Data;
+    fn check_compatible(&self, other: &Self) -> bool {
+        self.form_domain.check_compatible(&other.form_domain)
     }
     fn check_valid(&self, val: &Self::Carrier) -> bool {
         let val = val.as_form();
@@ -104,6 +148,35 @@ impl<T: 'static + Clone + PartialOrd> Domain for IntervalDomain<T> {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub struct IntervalDomainAlt<T> {
+    pub lower: Bound<T>,
+    pub upper: Bound<T>,
+}
+impl<T> IntervalDomainAlt<T> {
+    pub fn new(lower: Bound<T>, upper: Bound<T>) -> IntervalDomainAlt<T> {
+        IntervalDomainAlt { lower, upper }
+    }
+}
+impl<T: 'static + Clone + PartialOrd> DomainAlt for IntervalDomainAlt<T> {
+    type Carrier = T;
+    fn check_compatible(&self, other: &Self) -> bool {
+        self == other
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        let lower_ok = match &self.lower {
+            Bound::Included(bound) => { val >= bound }
+            Bound::Excluded(bound) => { val > bound }
+            Bound::Unbounded => { true }
+        };
+        lower_ok && match &self.upper {
+            Bound::Included(bound) => { val <= bound }
+            Bound::Excluded(bound) => { val < bound }
+            Bound::Unbounded => { true }
+        }
+    }
+}
+
 
 /// A Domain that contains pairs of values.
 pub struct PairDomain<T0, T1>(pub Box<dyn Domain<Carrier=T0>>, pub Box<dyn Domain<Carrier=T1>>);
@@ -126,6 +199,27 @@ impl<T0: 'static + PartialEq, T1: 'static + PartialEq> Domain for PairDomain<T0,
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         other.as_any().downcast_ref::<Self>().map_or(false, |o| self.0.check_compatible(&*o.0) && self.1.check_compatible(&*o.1))
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        self.0.check_valid(&val.0) && self.1.check_valid(&val.1)
+    }
+}
+
+pub struct PairDomainAlt<D0: DomainAlt, D1: DomainAlt>(pub D0, pub D1);
+impl<D0: DomainAlt, D1: DomainAlt> PairDomainAlt<D0, D1> {
+    pub fn new(element_domain0: D0, element_domain1: D1) -> PairDomainAlt<D0, D1> {
+        PairDomainAlt(element_domain0, element_domain1)
+    }
+}
+impl<D0: DomainAlt, D1: DomainAlt> Clone for PairDomainAlt<D0, D1> {
+    fn clone(&self) -> Self {
+        PairDomainAlt(self.0.clone(), self.1.clone())
+    }
+}
+impl<D0: DomainAlt, D1: DomainAlt> DomainAlt for PairDomainAlt<D0, D1> {
+    type Carrier = (D0::Carrier, D1::Carrier);
+    fn check_compatible(&self, other: &Self) -> bool {
+        self.0.check_compatible(&other.0) && self.1.check_compatible(&other.1)
     }
     fn check_valid(&self, val: &Self::Carrier) -> bool {
         self.0.check_valid(&val.0) && self.1.check_valid(&val.1)
@@ -159,6 +253,30 @@ impl<T: 'static> Domain for MapDomain<T> {
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         other.as_any().downcast_ref::<Self>().map_or(false, |o| self.element_domain.check_compatible(&*o.element_domain))
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        val.iter().all(|e| self.element_domain.check_valid(e.1))
+    }
+}
+
+#[derive(Clone)]
+pub struct MapDomainAlt<D: DomainAlt> {
+    pub element_domain: D
+}
+impl<D: DomainAlt> MapDomainAlt<D> {
+    pub fn new(element_domain: D) -> MapDomainAlt<D> {
+        MapDomainAlt { element_domain }
+    }
+}
+impl<T> MapDomainAlt<AllDomainAlt<T>> {
+    pub fn new_all() -> MapDomainAlt<AllDomainAlt<T>> {
+        Self::new(AllDomainAlt::<T>::new())
+    }
+}
+impl<D: DomainAlt> DomainAlt for MapDomainAlt<D> {
+    type Carrier = HashMap<String, D::Carrier>;
+    fn check_compatible(&self, other: &Self) -> bool {
+        self.element_domain.check_compatible(&other.element_domain)
     }
     fn check_valid(&self, val: &Self::Carrier) -> bool {
         val.iter().all(|e| self.element_domain.check_valid(e.1))
@@ -224,6 +342,30 @@ impl<T: 'static> Domain for VectorDomain<T> {
     fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>> { Box::new(self.clone()) }
     fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool {
         other.as_any().downcast_ref::<Self>().map_or(false, |o| self.element_domain.check_compatible(&*o.element_domain))
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        val.iter().all(|e| self.element_domain.check_valid(e))
+    }
+}
+
+#[derive(Clone)]
+pub struct VectorDomainAlt<D: DomainAlt> {
+    pub element_domain: D,
+}
+impl<D: DomainAlt> VectorDomainAlt<D> {
+    pub fn new(element_domain: D) -> VectorDomainAlt<D> {
+        VectorDomainAlt { element_domain }
+    }
+}
+impl<T> VectorDomainAlt<AllDomainAlt<T>> {
+    pub fn new_all() -> VectorDomainAlt<AllDomainAlt<T>> {
+        Self::new(AllDomainAlt::<T>::new())
+    }
+}
+impl<D: DomainAlt> DomainAlt for VectorDomainAlt<D> {
+    type Carrier = Vec<D::Carrier>;
+    fn check_compatible(&self, other: &Self) -> bool {
+        self.element_domain.check_compatible(&other.element_domain)
     }
     fn check_valid(&self, val: &Self::Carrier) -> bool {
         val.iter().all(|e| self.element_domain.check_valid(e))
