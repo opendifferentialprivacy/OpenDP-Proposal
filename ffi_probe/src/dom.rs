@@ -41,7 +41,7 @@ pub struct AllDomainAlt<T> {
     _marker: PhantomData<T>,
 }
 impl<T> AllDomainAlt<T> {
-    pub fn new() -> AllDomainAlt<T> {
+    pub fn new() -> Self {
         AllDomainAlt { _marker: PhantomData }
     }
 }
@@ -91,7 +91,7 @@ pub struct DataDomainAlt<D: DomainAlt> {
     pub form_domain: D,
 }
 impl<D: DomainAlt> DataDomainAlt<D> {
-    pub fn new(form_domain: D) -> DataDomainAlt<D> {
+    pub fn new(form_domain: D) -> Self {
         DataDomainAlt { form_domain }
     }
 }
@@ -154,7 +154,7 @@ pub struct IntervalDomainAlt<T> {
     pub upper: Bound<T>,
 }
 impl<T> IntervalDomainAlt<T> {
-    pub fn new(lower: Bound<T>, upper: Bound<T>) -> IntervalDomainAlt<T> {
+    pub fn new(lower: Bound<T>, upper: Bound<T>) -> Self {
         IntervalDomainAlt { lower, upper }
     }
 }
@@ -207,7 +207,7 @@ impl<T0: 'static + PartialEq, T1: 'static + PartialEq> Domain for PairDomain<T0,
 
 pub struct PairDomainAlt<D0: DomainAlt, D1: DomainAlt>(pub D0, pub D1);
 impl<D0: DomainAlt, D1: DomainAlt> PairDomainAlt<D0, D1> {
-    pub fn new(element_domain0: D0, element_domain1: D1) -> PairDomainAlt<D0, D1> {
+    pub fn new(element_domain0: D0, element_domain1: D1) -> Self {
         PairDomainAlt(element_domain0, element_domain1)
     }
 }
@@ -264,12 +264,12 @@ pub struct MapDomainAlt<D: DomainAlt> {
     pub element_domain: D
 }
 impl<D: DomainAlt> MapDomainAlt<D> {
-    pub fn new(element_domain: D) -> MapDomainAlt<D> {
+    pub fn new(element_domain: D) -> Self {
         MapDomainAlt { element_domain }
     }
 }
 impl<T> MapDomainAlt<AllDomainAlt<T>> {
-    pub fn new_all() -> MapDomainAlt<AllDomainAlt<T>> {
+    pub fn new_all() -> Self {
         Self::new(AllDomainAlt::<T>::new())
     }
 }
@@ -353,12 +353,12 @@ pub struct VectorDomainAlt<D: DomainAlt> {
     pub element_domain: D,
 }
 impl<D: DomainAlt> VectorDomainAlt<D> {
-    pub fn new(element_domain: D) -> VectorDomainAlt<D> {
+    pub fn new(element_domain: D) -> Self {
         VectorDomainAlt { element_domain }
     }
 }
 impl<T> VectorDomainAlt<AllDomainAlt<T>> {
-    pub fn new_all() -> VectorDomainAlt<AllDomainAlt<T>> {
+    pub fn new_all() -> Self {
         Self::new(AllDomainAlt::<T>::new())
     }
 }

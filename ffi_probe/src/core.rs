@@ -20,35 +20,13 @@ pub trait DomainAlt: Clone {
     fn check_valid(&self, val: &Self::Carrier) -> bool;
 }
 
-impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD, DummyMetric<()>, DummyMeasure<()>> {
-    pub fn new(input_domain: ID, output_domain: OD, function: Function<ID::Carrier, OD::Carrier>) -> Self {
-        let input_metric = dummy::DummyMetric::new();
-        let output_measure = dummy::DummyMeasure::new();
-        let privacy_relation = dummy::dummy_relation();
-        Self::new_all(input_domain, output_domain, function, input_metric, output_measure, privacy_relation)
-    }
-}
-
-impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> MeasurementAlt<ID, OD, IM, OM> {
-    pub fn new_all(
-        input_domain: ID,
-        output_domain: OD,
-        function: Function<ID::Carrier, OD::Carrier>,
-        input_metric: IM,
-        output_measure: OM,
-        privacy_relation: Relation<IM::Distance, OM::Distance>,
-    ) -> MeasurementAlt<ID, OD, IM, OM> {
-        MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
-    }
-}
-
 #[derive(Clone)]
 pub struct Function<I, O> {
     function: Rc<dyn Fn(*const I) -> Box<O>>
 }
 
 impl<I, O> Function<I, O> {
-    pub fn new(function: impl Fn(&I) -> O + 'static) -> Function<I, O> {
+    pub fn new(function: impl Fn(&I) -> O + 'static) -> Self {
         let function = move |arg: *const I| -> Box<O> {
             let arg = ffi_utils::as_ref(arg);
             let res = function(arg);
@@ -110,7 +88,7 @@ pub struct Relation<I, O> {
     relation: Rc<dyn Fn(*const I, *const O) -> bool>
 }
 impl<I, O> Relation<I, O> {
-    pub fn new(relation: impl Fn(&I, &O) -> bool + 'static) -> Relation<I, O> {
+    pub fn new(relation: impl Fn(&I, &O) -> bool + 'static) -> Self {
         let relation = move |input_distance: *const I, output_distance: *const O| -> bool {
             let input_distance = ffi_utils::as_ref(input_distance);
             let output_distance = ffi_utils::as_ref(output_distance);
@@ -194,6 +172,29 @@ pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure>
     pub privacy_relation: Relation<IM::Distance, OM::Distance>,
 }
 
+impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD, DummyMetric<()>, DummyMeasure<()>> {
+    pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
+        let function = Function::new(function);
+        let input_metric = dummy::DummyMetric::new();
+        let output_measure = dummy::DummyMeasure::new();
+        let privacy_relation = dummy::dummy_relation();
+        Self::new_all(input_domain, output_domain, function, input_metric, output_measure, privacy_relation)
+    }
+}
+
+impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> MeasurementAlt<ID, OD, IM, OM> {
+    pub fn new_all(
+        input_domain: ID,
+        output_domain: OD,
+        function: Function<ID::Carrier, OD::Carrier>,
+        input_metric: IM,
+        output_measure: OM,
+        privacy_relation: Relation<IM::Distance, OM::Distance>,
+    ) -> Self {
+        MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
+    }
+}
+
 pub struct Transformation<I, O, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
     pub input_domain: Box<dyn Domain<Carrier=I>>,
     pub input_metric: IM,
@@ -258,7 +259,8 @@ pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metri
 }
 
 impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD, DummyMetric<()>, DummyMetric<()>> {
-    pub fn new(input_domain: ID, output_domain: OD, function: Function<ID::Carrier, OD::Carrier>) -> Self {
+    pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
+        let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
         let output_metric = dummy::DummyMetric::new();
         let privacy_relation = dummy::dummy_relation();
@@ -274,7 +276,7 @@ impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metric> TransformationAlt<ID,
         input_metric: IM,
         output_metric: OM,
         privacy_relation: Relation<IM::Distance, OM::Distance>,
-    ) -> TransformationAlt<ID, OD, IM, OM> {
+    ) -> Self {
         TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, privacy_relation }
     }
 }
@@ -578,7 +580,7 @@ r#"{
 // UNIT TESTS
 #[cfg(test)]
 mod tests {
-    use crate::dom::AllDomain;
+    use crate::dom::{AllDomain, AllDomainAlt};
 
     use super::*;
 
@@ -587,6 +589,14 @@ mod tests {
         let identity = Transformation::<i32, i32>::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
         let arg = 99;
         let ret = identity.invoke(&arg);
+        assert_eq!(ret, 99);
+    }
+
+    #[test]
+    fn test_identity_alt() {
+        let identity = TransformationAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<i32>::new(), |arg: &i32| arg.clone());
+        let arg = 99;
+        let ret = identity.function.eval(&arg);
         assert_eq!(ret, 99);
     }
 
@@ -601,6 +611,16 @@ mod tests {
     }
 
     #[test]
+    fn test_make_chain_mt_alt() {
+        let transformation = TransformationAlt::new(AllDomainAlt::<u8>::new(), AllDomainAlt::<i32>::new(), |a: &u8| (a + 1) as i32);
+        let measurement = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |a: &i32| (a + 1) as f64);
+        let chain = make_chain_mt_alt(&measurement, &transformation);
+        let arg = 99_u8;
+        let ret = chain.function.eval(&arg);
+        assert_eq!(ret, 101.0);
+    }
+
+    #[test]
     fn test_make_chain_tt() {
         let transformation0 = Transformation::new(AllDomain::<u8>::new(), AllDomain::<i32>::new(), |a: &u8| (a + 1) as i32);
         let transformation1 = Transformation::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |a: &i32| (a + 1) as f64);
@@ -611,12 +631,32 @@ mod tests {
     }
 
     #[test]
+    fn test_make_chain_tt_alt() {
+        let transformation0 = TransformationAlt::new(AllDomainAlt::<u8>::new(), AllDomainAlt::<i32>::new(), |a: &u8| (a + 1) as i32);
+        let transformation1 = TransformationAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |a: &i32| (a + 1) as f64);
+        let chain = make_chain_tt_alt(&transformation1, &transformation0);
+        let arg = 99_u8;
+        let ret = chain.function.eval(&arg);
+        assert_eq!(ret, 101.0);
+    }
+
+    #[test]
     fn test_make_composition() {
         let measurement0 = Measurement::new(AllDomain::<i32>::new(), AllDomain::<f32>::new(), |arg: &i32| (arg + 1) as f32);
         let measurement1 = Measurement::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |arg: &i32| (arg - 1) as f64);
         let chain = make_composition(&measurement0, &measurement1);
         let arg = 99;
         let ret = chain.invoke(&arg);
+        assert_eq!(ret, (Box::new(100_f32), Box::new(98_f64)));
+    }
+
+    #[test]
+    fn test_make_composition_alt() {
+        let measurement0 = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f32>::new(), |arg: &i32| (arg + 1) as f32);
+        let measurement1 = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |arg: &i32| (arg - 1) as f64);
+        let composition = make_composition_alt(&measurement0, &measurement1);
+        let arg = 99;
+        let ret = composition.function.eval(&arg);
         assert_eq!(ret, (Box::new(100_f32), Box::new(98_f64)));
     }
 
