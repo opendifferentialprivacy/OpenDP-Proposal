@@ -163,7 +163,7 @@ impl<I, O, IM: Metric, OM: Measure> Measurement<I, O, IM, OM> {
     }
 }
 
-pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> {
+pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
     pub input_domain: ID,
     pub output_domain: OD,
     pub function: Function<ID::Carrier, OD::Carrier>,
@@ -172,7 +172,7 @@ pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure>
     pub privacy_relation: Relation<IM::Distance, OM::Distance>,
 }
 
-impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD, DummyMetric<()>, DummyMeasure<()>> {
+impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD> {
     pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
@@ -249,7 +249,7 @@ impl<I, O, IM: Metric, OM: Metric> Transformation<I, O, IM, OM> {
     }
 }
 
-pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metric> {
+pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
     pub input_domain: ID,
     pub output_domain: OD,
     pub function: Function<ID::Carrier, OD::Carrier>,
@@ -258,7 +258,7 @@ pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metri
     pub privacy_relation: Relation<IM::Distance, OM::Distance>,
 }
 
-impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD, DummyMetric<()>, DummyMetric<()>> {
+impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD> {
     pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
