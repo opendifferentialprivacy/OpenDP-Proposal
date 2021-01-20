@@ -408,6 +408,7 @@ pub(crate) mod ffi {
     use crate::mono::Type;
 
     use super::*;
+    use crate::dom::AllDomainAlt;
 
     pub struct FfiObject {
         pub type_: Type,
@@ -467,6 +468,33 @@ pub(crate) mod ffi {
         // }
     }
 
+    pub struct FfiMeasurementAlt {
+        pub input_domain_carrier: Type,
+        pub output_domain_carrier: Type,
+        pub value: Box<MeasurementAlt<AllDomainAlt<()>, AllDomainAlt<()>>>,
+    }
+
+    impl FfiMeasurementAlt {
+        pub fn new_typed<ID: DomainAlt, OD: DomainAlt>(input_domain_carrier: Type, output_domain_carrier: Type, value: MeasurementAlt<ID, OD>) -> *mut FfiMeasurementAlt {
+            let value = ffi_utils::into_box(value);
+            let measurement = FfiMeasurementAlt { input_domain_carrier, output_domain_carrier, value };
+            ffi_utils::into_raw(measurement)
+        }
+
+        pub fn new<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(value: MeasurementAlt<ID, OD>) -> *mut FfiMeasurementAlt {
+            let input_domain_carrier = Type::new::<ID::Carrier>();
+            let output_domain_carrier = Type::new::<OD::Carrier>();
+            Self::new_typed(input_domain_carrier, output_domain_carrier, value)
+        }
+
+        // pub fn as_ref<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(&self) -> &MeasurementAlt<ID, OD> {
+        //     // TODO: Check types.
+        //     let value = self.value.as_ref() as *const MeasurementAlt<AllDomainAlt<()>, AllDomainAlt<()>> as *const MeasurementAlt<ID, OD>;
+        //     let value = unsafe { value.as_ref() };
+        //     value.unwrap()
+        // }
+    }
+
     pub struct FfiTransformation {
         pub input_type: Type,
         pub output_type: Type,
@@ -494,6 +522,33 @@ pub(crate) mod ffi {
         }
     }
 
+    pub struct FfiTransformationAlt {
+        pub input_domain_carrier: Type,
+        pub output_domain_carrier: Type,
+        pub value: Box<TransformationAlt<AllDomainAlt<()>, AllDomainAlt<()>>>,
+    }
+
+    impl FfiTransformationAlt {
+        pub fn new_typed<ID: DomainAlt, OD: DomainAlt>(input_domain_carrier: Type, output_domain_carrier: Type, value: TransformationAlt<ID, OD>) -> *mut FfiTransformationAlt {
+            let value = ffi_utils::into_box(value);
+            let transformation = FfiTransformationAlt { input_domain_carrier, output_domain_carrier, value };
+            ffi_utils::into_raw(transformation)
+        }
+
+        pub fn new<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(value: TransformationAlt<ID, OD>) -> *mut FfiTransformationAlt {
+            let input_domain_carrier = Type::new::<ID::Carrier>();
+            let output_domain_carrier = Type::new::<OD::Carrier>();
+            Self::new_typed(input_domain_carrier, output_domain_carrier, value)
+        }
+
+        // pub fn as_ref<ID: DomainAlt, OD: DomainAlt>(&self) -> &TransformationAlt<ID, OD> {
+        //     // TODO: Check types.
+        //     let value = self.value.as_ref() as *const TransformationAlt<AllDomainAlt<()>, AllDomainAlt<()>> as *const TransformationAlt<ID, OD>;
+        //     let value = unsafe { value.as_ref() };
+        //     value.unwrap()
+        // }
+    }
+
     #[no_mangle]
     pub extern "C" fn opendp_core__measurement_invoke(this: *const FfiMeasurement, arg: *const FfiObject) -> *mut FfiObject {
         let this = ffi_utils::as_ref(this);
@@ -505,7 +560,22 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_core__measurement_invoke_alt(this: *const FfiMeasurementAlt, arg: *const FfiObject) -> *mut FfiObject {
+        let this = ffi_utils::as_ref(this);
+        let arg = ffi_utils::as_ref(arg);
+        assert_eq!(arg.type_, this.input_domain_carrier);
+        let res_type = this.output_domain_carrier.clone();
+        let res = this.value.function.eval_ffi(&arg.value);
+        FfiObject::new_typed(res_type, res)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_core__measurement_free(this: *mut FfiMeasurement) {
+        ffi_utils::into_owned(this);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_core__measurement_free_alt(this: *mut FfiMeasurementAlt) {
         ffi_utils::into_owned(this);
     }
 
@@ -520,7 +590,22 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_core__transformation_invoke_alt(this: *const FfiTransformationAlt, arg: *const FfiObject) -> *mut FfiObject {
+        let this = ffi_utils::as_ref(this);
+        let arg = ffi_utils::as_ref(arg);
+        assert_eq!(arg.type_, this.input_domain_carrier);
+        let res_type = this.output_domain_carrier.clone();
+        let res = this.value.function.eval_ffi(&arg.value);
+        FfiObject::new_typed(res_type, res)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_core__transformation_free(this: *mut FfiTransformation) {
+        ffi_utils::into_owned(this);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_core__transformation_free_alt(this: *mut FfiTransformationAlt) {
         ffi_utils::into_owned(this);
     }
 
@@ -536,6 +621,18 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_core__make_chain_mt_alt(measurement1: *mut FfiMeasurementAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiMeasurementAlt {
+        let transformation0 = ffi_utils::into_owned(transformation0);
+        let measurement1 = ffi_utils::into_owned(measurement1);
+        // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
+        assert_eq!(transformation0.output_domain_carrier, measurement1.input_domain_carrier);
+        let input_domain_carrier = transformation0.input_domain_carrier.clone();
+        let output_domain_carrier = measurement1.output_domain_carrier.clone();
+        let measurement = super::make_chain_mt_alt(&measurement1.value, &transformation0.value);
+        FfiMeasurementAlt::new_typed(input_domain_carrier, output_domain_carrier, measurement)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_tt(transformation1: *mut FfiTransformation, transformation0: *mut FfiTransformation) -> *mut FfiTransformation {
         let transformation0 = ffi_utils::into_owned(transformation0);
         let transformation1 = ffi_utils::into_owned(transformation1);
@@ -547,6 +644,18 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_core__make_chain_tt_alt(transformation1: *mut FfiTransformationAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiTransformationAlt {
+        let transformation0 = ffi_utils::into_owned(transformation0);
+        let transformation1 = ffi_utils::into_owned(transformation1);
+        // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
+        assert_eq!(transformation0.output_domain_carrier, transformation1.input_domain_carrier);
+        let input_domain_carrier = transformation0.input_domain_carrier.clone();
+        let output_domain_carrier = transformation1.output_domain_carrier.clone();
+        let transformation = super::make_chain_tt_alt(&transformation1.value, &transformation0.value);
+        FfiTransformationAlt::new_typed(input_domain_carrier, output_domain_carrier, transformation)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_core__make_composition(measurement0: *mut FfiMeasurement, measurement1: *mut FfiMeasurement) -> *mut FfiMeasurement {
         let measurement0 = ffi_utils::into_owned(measurement0);
         let measurement1 = ffi_utils::into_owned(measurement1);
@@ -555,6 +664,18 @@ pub(crate) mod ffi {
         let output_type = Type::new_box_pair(&measurement0.output_type, &measurement1.output_type);
         let measurement = make_composition(&measurement0.value, &measurement1.value);
         FfiMeasurement::new_typed(input_type, output_type, measurement)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_core__make_composition_alt(measurement0: *mut FfiMeasurementAlt, measurement1: *mut FfiMeasurementAlt) -> *mut FfiMeasurementAlt {
+        let measurement0 = ffi_utils::into_owned(measurement0);
+        let measurement1 = ffi_utils::into_owned(measurement1);
+        // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
+        assert_eq!(measurement0.input_domain_carrier, measurement1.input_domain_carrier);
+        let input_domain_carrier = measurement0.input_domain_carrier.clone();
+        let output_domain_carrier = Type::new_box_pair(&measurement0.output_domain_carrier, &measurement1.output_domain_carrier);
+        let measurement = make_composition_alt(&measurement0.value, &measurement1.value);
+        FfiMeasurementAlt::new_typed(input_domain_carrier, output_domain_carrier, measurement)
     }
 
     #[no_mangle]
