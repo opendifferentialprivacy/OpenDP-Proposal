@@ -7,9 +7,9 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Measurement, Transformation};
+use crate::core::{Domain, Measurement, Transformation, TransformationAlt, MeasurementAlt};
 use crate::data::{Data, Element, Form};
-use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain};
+use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain, AllDomainAlt, VectorDomainAlt, MapDomainAlt, IntervalDomainAlt};
 
 
 pub fn make_identity<T: 'static + Form + Clone>() -> Transformation<T, T> {
@@ -19,6 +19,15 @@ pub fn make_identity<T: 'static + Form + Clone>() -> Transformation<T, T> {
         arg.clone()
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_identity_alt<T: Clone>() -> TransformationAlt<AllDomainAlt<T>, AllDomainAlt<T>> {
+    let input_domain = AllDomainAlt::<T>::new();
+    let output_domain = AllDomainAlt::<T>::new();
+    let function = |arg: &T| -> T {
+        arg.clone()
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn vec_string_to_str(src: &Vec<String>) -> Vec<&str> {
@@ -43,6 +52,16 @@ pub fn make_split_lines() -> Transformation<String, Vec<String>> {
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_split_lines_alt() -> TransformationAlt<AllDomainAlt<String>, VectorDomainAlt<AllDomainAlt<String>>> {
+    let input_domain = AllDomainAlt::<String>::new();
+    let output_domain = VectorDomainAlt::new_all();
+    let function = |arg: &String| -> Vec<String> {
+        let ret = split_lines(arg);
+        vec_str_to_string(ret)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
+}
+
 fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     T: FromStr + Default,
     T::Err: Debug {
@@ -64,6 +83,17 @@ pub fn make_parse_series<T>(impute: bool) -> Transformation<Vec<String>, Vec<T>>
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_parse_series_alt<T>(impute: bool) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<String>>, VectorDomainAlt<AllDomainAlt<T>>> where
+    T: FromStr + Default, T::Err: Debug {
+    let input_domain = VectorDomainAlt::new_all();
+    let output_domain = VectorDomainAlt::new_all();
+    let function = move |arg: &Vec<String>| -> Vec<T> {
+        let arg = vec_string_to_str(arg);
+        parse_series(&arg, impute)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
+}
+
 fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
     fn split<'a>(line: &'a str, separator: &str) -> Vec<&'a str> {
         line.split(separator).into_iter().map(|e| e.trim()).collect()
@@ -81,6 +111,18 @@ pub fn make_split_records(separator: Option<&str>) -> Transformation<Vec<String>
         ret.into_iter().map(vec_str_to_string).collect()
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_split_records_alt(separator: Option<&str>) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<String>>, VectorDomainAlt<VectorDomainAlt<AllDomainAlt<String>>>> {
+    let separator = separator.unwrap_or(",").to_owned();
+    let input_domain = VectorDomainAlt::new_all();
+    let output_domain = VectorDomainAlt::new(VectorDomainAlt::new_all());
+    let function = move |arg: &Vec<String>| -> Vec<Vec<String>> {
+        let arg = vec_string_to_str(arg);
+        let ret = split_records(&separator, &arg);
+        ret.into_iter().map(vec_str_to_string).collect()
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn conform_records<'a>(len: usize, records: &Vec<Vec<&'a str>>) -> Vec<Vec<&'a str>> {
@@ -116,6 +158,10 @@ pub fn create_raw_dataframe_domain(col_count: usize) -> impl Domain<Carrier=Data
     HeterogeneousMapDomain::new(element_domains)
 }
 
+pub fn create_dataframe_domain_alt() -> MapDomainAlt<AllDomainAlt<Data>> {
+    MapDomainAlt::new(AllDomainAlt::new())
+}
+
 pub fn make_create_dataframe(col_count: usize) -> Transformation<Vec<Vec<String>>, DataFrame> {
     let input_domain = VectorDomain::<Vec<String>>::new(VectorDomain::<String>::new_all());
     let output_domain = create_raw_dataframe_domain(col_count);
@@ -124,6 +170,16 @@ pub fn make_create_dataframe(col_count: usize) -> Transformation<Vec<Vec<String>
         create_dataframe(col_count, &arg)
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_create_dataframe_alt(col_count: usize) -> TransformationAlt<VectorDomainAlt<VectorDomainAlt<AllDomainAlt<String>>>, MapDomainAlt<AllDomainAlt<Data>>> {
+    let input_domain = VectorDomainAlt::new(VectorDomainAlt::new_all());
+    let output_domain = create_dataframe_domain_alt();
+    let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
+        let arg = arg.into_iter().map(|e| vec_string_to_str(e)).collect();
+        create_dataframe(col_count, &arg)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame {
@@ -141,6 +197,16 @@ pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transf
         split_dataframe(&separator, col_count, &arg)
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_split_dataframe_alt(separator: Option<&str>, col_count: usize) -> TransformationAlt<AllDomainAlt<String>, MapDomainAlt<AllDomainAlt<Data>>> {
+    let separator = separator.unwrap_or(",").to_owned();
+    let input_domain = AllDomainAlt::new();
+    let output_domain = create_dataframe_domain_alt();
+    let function = move |arg: &String| -> DataFrame {
+        split_dataframe(&separator, col_count, &arg)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
@@ -179,6 +245,17 @@ pub fn make_parse_column<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_parse_column_alt<T>(key: &str, impute: bool) -> TransformationAlt<MapDomainAlt<AllDomainAlt<Data>>, MapDomainAlt<AllDomainAlt<Data>>> where
+    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
+    let key = key.to_owned();
+    let input_domain = create_dataframe_domain_alt();
+    let output_domain = create_dataframe_domain_alt();
+    let function = move |arg: &DataFrame| -> DataFrame {
+        parse_column::<T>(&key, impute, arg)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
+}
+
 pub fn make_select_column<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &str) -> Transformation<DataFrame, Vec<T>> where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
@@ -195,6 +272,19 @@ pub fn make_select_column<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: 
         ret.clone()
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_select_column_alt<T>(key: &str) -> TransformationAlt<MapDomainAlt<AllDomainAlt<Data>>, VectorDomainAlt<AllDomainAlt<T>>> where
+    T: 'static + Element + Clone + PartialEq {
+    let key = key.to_owned();
+    let input_domain = create_dataframe_domain_alt();
+    let output_domain = VectorDomainAlt::new_all();
+    let function = move |arg: &DataFrame| -> Vec<T> {
+        let ret = arg.get(&key).expect("Missing dataframe column");
+        let ret: &Vec<T> = ret.as_form();
+        ret.clone()
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
@@ -215,6 +305,16 @@ pub fn make_clamp<T>(input_domain: &dyn Domain<Carrier=Vec<T>>, lower: T, upper:
     Transformation::new(input_domain, output_domain, function)
 }
 
+pub fn make_clamp_alt<T>(lower: T, upper: T) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<T>>, VectorDomainAlt<IntervalDomainAlt<T>>> where
+    T: 'static + Element + Copy + PartialEq + PartialOrd {
+    let input_domain = VectorDomainAlt::new_all();
+    let output_domain = VectorDomainAlt::new(IntervalDomainAlt::new(Bound::Included(lower), Bound::Included(upper)));
+    let function = move |arg: &Vec<T>| -> Vec<T> {
+        clamp(lower, upper, arg)
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
+}
+
 pub fn make_bounded_sum<T>(input_domain: &dyn Domain<Carrier=Vec<T>>) -> Transformation<Vec<T>, T> where
     T: 'static + Element + Clone + PartialEq + Sum<T> {
     let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
@@ -229,6 +329,18 @@ pub fn make_bounded_sum<T>(input_domain: &dyn Domain<Carrier=Vec<T>>) -> Transfo
         arg.into_iter().sum()
     };
     Transformation::new(input_domain, output_domain, function)
+}
+
+pub fn make_bounded_sum_alt<T>(lower: T, upper: T) -> TransformationAlt<VectorDomainAlt<IntervalDomainAlt<T>>, AllDomainAlt<T>> where
+    T: 'static + Element + Clone + PartialEq + PartialOrd + Sum<T> {
+    let input_domain = VectorDomainAlt::new(IntervalDomainAlt::new(Bound::Included(lower), Bound::Included(upper)));
+    let output_domain = AllDomainAlt::new();
+    let function = |arg: &Vec<T>| -> T {
+        // FIXME: Can't make this work with references, have to clone.
+        let arg = arg.clone();
+        arg.into_iter().sum()
+    };
+    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn laplace(sigma: f64) -> f64 {
@@ -258,6 +370,17 @@ pub fn make_base_laplace<T>(input_domain: &dyn Domain<Carrier=T>, sigma: f64) ->
         arg.add_noise(noise)
     };
     Measurement::new(input_domain, output_domain, function)
+}
+
+pub fn make_base_laplace_alt<T>(sigma: f64) -> MeasurementAlt<AllDomainAlt<T>, AllDomainAlt<T>> where
+    T: Copy + AddNoise {
+    let input_domain = AllDomainAlt::new();
+    let output_domain = AllDomainAlt::new();
+    let function = move |arg: &T| -> T {
+        let noise = laplace(sigma);
+        arg.add_noise(noise)
+    };
+    MeasurementAlt::new(input_domain, output_domain, function)
 }
 
 
@@ -422,7 +545,7 @@ r#"{
 
 #[cfg(test)]
 mod tests {
-    use crate::core::make_chain_tt;
+    use crate::core::{make_chain_tt, make_chain_tt_alt};
 
     use super::*;
 
@@ -435,10 +558,26 @@ mod tests {
     }
 
     #[test]
+    fn test_identity_alt() {
+        let identity = make_identity_alt();
+        let arg = 99;
+        let ret = identity.function.eval(&arg);
+        assert_eq!(ret, 99);
+    }
+
+    #[test]
     fn test_make_split_lines() {
         let transformation = make_split_lines();
         let arg = "ant\nbat\ncat\n".to_owned();
         let ret = transformation.invoke(&arg);
+        assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
+    }
+
+    #[test]
+    fn test_make_split_lines_alt() {
+        let transformation = make_split_lines_alt();
+        let arg = "ant\nbat\ncat\n".to_owned();
+        let ret = transformation.function.eval(&arg);
         assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
     }
 
@@ -452,10 +591,31 @@ mod tests {
     }
 
     #[test]
+    fn test_make_parse_series_alt() {
+        let transformation = make_parse_series_alt::<i32>(true);
+        let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
+        let ret = transformation.function.eval(&arg);
+        let expected = vec![1, 2, 3, 0];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_split_records() {
         let transformation = make_split_records(None);
         let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
         let ret = transformation.invoke(&arg);
+        assert_eq!(ret, vec![
+            vec!["ant".to_owned(), "foo".to_owned()],
+            vec!["bat".to_owned(), "bar".to_owned()],
+            vec!["cat".to_owned(), "baz".to_owned()],
+        ]);
+    }
+
+    #[test]
+    fn test_make_split_records_alt() {
+        let transformation = make_split_records_alt(None);
+        let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
+        let ret = transformation.function.eval(&arg);
         assert_eq!(ret, vec![
             vec!["ant".to_owned(), "foo".to_owned()],
             vec!["bat".to_owned(), "bar".to_owned()],
@@ -480,10 +640,38 @@ mod tests {
     }
 
     #[test]
+    fn test_make_create_dataframe_alt() {
+        let transformation = make_create_dataframe_alt(2);
+        let arg = vec![
+            vec!["ant".to_owned(), "foo".to_owned()],
+            vec!["bat".to_owned(), "bar".to_owned()],
+            vec!["cat".to_owned(), "baz".to_owned()],
+        ];
+        let ret = transformation.function.eval(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_split_dataframe() {
         let transformation = make_split_dataframe(None, 2);
         let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
         let ret = transformation.invoke(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_split_dataframe_alt() {
+        let transformation = make_split_dataframe_alt(None, 2);
+        let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
+        let ret = transformation.function.eval(&arg);
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
@@ -500,6 +688,21 @@ mod tests {
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
         ].into_iter().collect();
         let ret = transformation.invoke(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec![1, 2, 0])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_parse_column_alt() {
+        let transformation = make_parse_column_alt::<i32>("1", true);
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.function.eval(&arg);
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec![1, 2, 0])),
@@ -528,6 +731,25 @@ mod tests {
     }
 
     #[test]
+    fn test_make_parse_columns_alt() {
+        let transformation0 = make_parse_column_alt::<i32>("1", true);
+        let transformation1 = make_parse_column_alt::<f64>("2", true);
+        let transformation = make_chain_tt_alt(&transformation1, &transformation0);
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
+            ("2".to_owned(), Data::new(vec!["1.1".to_owned(), "2.2".to_owned(), "3.3".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.function.eval(&arg);
+        let expected: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec![1, 2, 3])),
+            ("2".to_owned(), Data::new(vec![1.1, 2.2, 3.3])),
+        ].into_iter().collect();
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_select_column() {
         let input_domain = create_raw_dataframe_domain(2);
         let transformation = make_select_column::<String>(&input_domain, "1");
@@ -536,6 +758,18 @@ mod tests {
             ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
         ].into_iter().collect();
         let ret = transformation.invoke(&arg);
+        let expected = vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_select_column_alt() {
+        let transformation = make_select_column_alt::<String>("1");
+        let arg: DataFrame = vec![
+            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
+            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
+        ].into_iter().collect();
+        let ret = transformation.function.eval(&arg);
         let expected = vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()];
         assert_eq!(ret, expected);
     }
@@ -551,6 +785,15 @@ mod tests {
     }
 
     #[test]
+    fn test_make_clamp_alt() {
+        let transformation = make_clamp_alt(0, 10);
+        let arg = vec![-10, -5, 0, 5, 10, 20];
+        let ret = transformation.function.eval(&arg);
+        let expected = vec![0, 0, 0, 5, 10, 10];
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_bounded_sum() {
         let input_domain = VectorDomain::<i32>::new(IntervalDomain::<i32>::new(Bound::Included(0), Bound::Included(10)));
         let transformation = make_bounded_sum::<i32>(&input_domain);
@@ -561,11 +804,28 @@ mod tests {
     }
 
     #[test]
+    fn test_make_bounded_sum_alt() {
+        let transformation = make_bounded_sum_alt::<i32>(0, 10);
+        let arg = vec![1, 2, 3, 4, 5];
+        let ret = transformation.function.eval(&arg);
+        let expected = 15;
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
     fn test_make_base_laplace() {
         let input_domain = AllDomain::<f64>::new();
         let measurement = make_base_laplace::<f64>(&input_domain, 1.0);
         let arg = 0.0;
         let _ret = measurement.invoke(&arg);
+        // TODO: Test for base_laplace
+    }
+
+    #[test]
+    fn test_make_base_laplace_alt() {
+        let measurement = make_base_laplace_alt::<f64>(1.0);
+        let arg = 0.0;
+        let _ret = measurement.function.eval(&arg);
         // TODO: Test for base_laplace
     }
 
