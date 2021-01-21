@@ -164,8 +164,8 @@ impl<I, O, IM: Metric, OM: Measure> Measurement<I, O, IM, OM> {
 }
 
 pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
-    pub input_domain: ID,
-    pub output_domain: OD,
+    pub input_domain: Box<ID>,
+    pub output_domain: Box<OD>,
     pub function: Function<ID::Carrier, OD::Carrier>,
     pub input_metric: IM,
     pub output_measure: OM,
@@ -191,6 +191,8 @@ impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> MeasurementAlt<ID, O
         output_measure: OM,
         privacy_relation: Relation<IM::Distance, OM::Distance>,
     ) -> Self {
+        let input_domain = Box::new(input_domain);
+        let output_domain = Box::new(output_domain);
         MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
     }
 }
@@ -250,12 +252,12 @@ impl<I, O, IM: Metric, OM: Metric> Transformation<I, O, IM, OM> {
 }
 
 pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
-    pub input_domain: ID,
-    pub output_domain: OD,
+    pub input_domain: Box<ID>,
+    pub output_domain: Box<OD>,
     pub function: Function<ID::Carrier, OD::Carrier>,
     pub input_metric: IM,
     pub output_metric: OM,
-    pub privacy_relation: Relation<IM::Distance, OM::Distance>,
+    pub stability_relation: Relation<IM::Distance, OM::Distance>,
 }
 
 impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD> {
@@ -263,8 +265,8 @@ impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD> {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
         let output_metric = dummy::DummyMetric::new();
-        let privacy_relation = dummy::dummy_relation();
-        Self::new_all(input_domain, output_domain, function, input_metric, output_metric, privacy_relation)
+        let stability_relation = dummy::dummy_relation();
+        Self::new_all(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
     }
 }
 
@@ -275,9 +277,11 @@ impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metric> TransformationAlt<ID,
         function: Function<ID::Carrier, OD::Carrier>,
         input_metric: IM,
         output_metric: OM,
-        privacy_relation: Relation<IM::Distance, OM::Distance>,
+        stability_relation: Relation<IM::Distance, OM::Distance>,
     ) -> Self {
-        TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, privacy_relation }
+        let input_domain = Box::new(input_domain);
+        let output_domain = Box::new(output_domain);
+        TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
     }
 }
 
@@ -314,8 +318,8 @@ pub fn make_chain_mt_alt<ID, XD, OD, IM, XM, OM>(measurement: &MeasurementAlt<XD
     let function = Function::make_chain(&measurement.function, &transformation0.function);
     let input_metric = transformation0.input_metric.clone();
     let output_measure = measurement.output_measure.clone();
-    let stability_relation = dummy_relation();
-    MeasurementAlt::new_all(input_domain, output_domain, function, input_metric, output_measure, stability_relation)
+    let privacy_relation = dummy_relation();
+    MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
 pub fn make_chain_tt<I: 'static, X: 'static, O: 'static>(transformation1: &Transformation<X, O>, transformation0: &Transformation<I, X>) -> Transformation<I, O> {
@@ -350,7 +354,7 @@ pub fn make_chain_tt_alt<ID, XD, OD, IM, XM, OM>(transformation1: &Transformatio
     let input_metric = transformation0.input_metric.clone();
     let output_metric = transformation1.output_metric.clone();
     let stability_relation = dummy_relation();
-    TransformationAlt::new_all(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
+    TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
 }
 
 pub fn make_composition<I: 'static, OA: 'static, OB: 'static>(measurement0: &Measurement<I, OA>, measurement1: &Measurement<I, OB>) -> Measurement<I, (Box<OA>, Box<OB>)> {
@@ -389,14 +393,14 @@ pub fn make_composition_alt<ID, OD0, OD1, IM, OM>(measurement0: &MeasurementAlt<
     let _output_domain0 = measurement0.output_domain.clone();
     let _output_domain1 = measurement1.output_domain.clone();
     // TODO: Figure out output_domain for composition.
-    let output_domain = dummy::DummyDomain::new();
+    let output_domain = Box::new(dummy::DummyDomain::new());
     let function = Function::make_composition(&measurement0.function, &measurement1.function);
     // TODO: Figure out input_metric for composition.
     let input_metric = measurement0.input_metric.clone();
     // TODO: Figure out output_measure for composition.
     let output_measure = measurement0.output_measure.clone();
-    let stability_relation = dummy_relation();
-    MeasurementAlt::new_all(input_domain, output_domain, function, input_metric, output_measure, stability_relation)
+    let privacy_relation = dummy_relation();
+    MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
 
@@ -611,8 +615,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_mt(measurement1: *mut FfiMeasurement, transformation0: *mut FfiTransformation) -> *mut FfiMeasurement {
-        let transformation0 = ffi_utils::into_owned(transformation0);
-        let measurement1 = ffi_utils::into_owned(measurement1);
+        let transformation0 = ffi_utils::as_ref(transformation0);
+        let measurement1 = ffi_utils::as_ref(measurement1);
         assert_eq!(transformation0.output_type, measurement1.input_type);
         let input_type = transformation0.input_type.clone();
         let output_type = measurement1.output_type.clone();
@@ -622,8 +626,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_mt_alt(measurement1: *mut FfiMeasurementAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiMeasurementAlt {
-        let transformation0 = ffi_utils::into_owned(transformation0);
-        let measurement1 = ffi_utils::into_owned(measurement1);
+        let transformation0 = ffi_utils::as_ref(transformation0);
+        let measurement1 = ffi_utils::as_ref(measurement1);
         // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
         assert_eq!(transformation0.output_domain_carrier, measurement1.input_domain_carrier);
         let input_domain_carrier = transformation0.input_domain_carrier.clone();
@@ -634,8 +638,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_tt(transformation1: *mut FfiTransformation, transformation0: *mut FfiTransformation) -> *mut FfiTransformation {
-        let transformation0 = ffi_utils::into_owned(transformation0);
-        let transformation1 = ffi_utils::into_owned(transformation1);
+        let transformation0 = ffi_utils::as_ref(transformation0);
+        let transformation1 = ffi_utils::as_ref(transformation1);
         assert_eq!(transformation0.output_type, transformation1.input_type);
         let input_type = transformation0.input_type.clone();
         let output_type = transformation1.output_type.clone();
@@ -645,8 +649,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_tt_alt(transformation1: *mut FfiTransformationAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiTransformationAlt {
-        let transformation0 = ffi_utils::into_owned(transformation0);
-        let transformation1 = ffi_utils::into_owned(transformation1);
+        let transformation0 = ffi_utils::as_ref(transformation0);
+        let transformation1 = ffi_utils::as_ref(transformation1);
         // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
         assert_eq!(transformation0.output_domain_carrier, transformation1.input_domain_carrier);
         let input_domain_carrier = transformation0.input_domain_carrier.clone();
@@ -657,8 +661,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_composition(measurement0: *mut FfiMeasurement, measurement1: *mut FfiMeasurement) -> *mut FfiMeasurement {
-        let measurement0 = ffi_utils::into_owned(measurement0);
-        let measurement1 = ffi_utils::into_owned(measurement1);
+        let measurement0 = ffi_utils::as_ref(measurement0);
+        let measurement1 = ffi_utils::as_ref(measurement1);
         assert_eq!(measurement0.input_type, measurement1.input_type);
         let input_type = measurement0.input_type.clone();
         let output_type = Type::new_box_pair(&measurement0.output_type, &measurement1.output_type);
@@ -668,8 +672,8 @@ pub(crate) mod ffi {
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_composition_alt(measurement0: *mut FfiMeasurementAlt, measurement1: *mut FfiMeasurementAlt) -> *mut FfiMeasurementAlt {
-        let measurement0 = ffi_utils::into_owned(measurement0);
-        let measurement1 = ffi_utils::into_owned(measurement1);
+        let measurement0 = ffi_utils::as_ref(measurement0);
+        let measurement1 = ffi_utils::as_ref(measurement1);
         // TODO: Should be checking domain, not just carrier. Need to add fields to Ffi struct.
         assert_eq!(measurement0.input_domain_carrier, measurement1.input_domain_carrier);
         let input_domain_carrier = measurement0.input_domain_carrier.clone();

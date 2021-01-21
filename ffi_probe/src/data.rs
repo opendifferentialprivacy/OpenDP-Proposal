@@ -123,6 +123,11 @@ pub mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_data__from_string_alt(p: *const c_char) -> *mut FfiObject {
+        opendp_data__from_string(p)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_data__to_string(this: *const FfiObject) -> *const c_char {
         fn monomorphize<T: std::fmt::Debug>(this: &FfiObject) -> *const c_char {
             let this = this.as_ref::<T>();
@@ -144,8 +149,18 @@ pub mod ffi {
     }
 
     #[no_mangle]
+    pub extern "C" fn opendp_data__to_string_alt(this: *const FfiObject) -> *const c_char {
+        opendp_data__to_string(this)
+    }
+
+    #[no_mangle]
     pub extern "C" fn opendp_data__data_free(this: *mut FfiObject) {
         ffi_utils::into_owned(this);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn opendp_data__data_free_alt(this: *mut FfiObject) {
+        opendp_data__data_free(this)
     }
 
     #[no_mangle]

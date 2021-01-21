@@ -158,7 +158,7 @@ impl<T> IntervalDomainAlt<T> {
         IntervalDomainAlt { lower, upper }
     }
 }
-impl<T: 'static + Clone + PartialOrd> DomainAlt for IntervalDomainAlt<T> {
+impl<T: Clone + PartialOrd> DomainAlt for IntervalDomainAlt<T> {
     type Carrier = T;
     fn check_compatible(&self, other: &Self) -> bool {
         self == other
