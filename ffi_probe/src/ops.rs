@@ -408,7 +408,7 @@ mod ffi {
     pub extern "C" fn opendp_ops__make_identity_alt(type_args: *const c_char) -> *mut FfiTransformationAlt {
         fn monomorphize<T: 'static + Form + Clone>() -> *mut FfiTransformationAlt {
             let transformation = make_identity_alt::<T>();
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
@@ -423,7 +423,7 @@ mod ffi {
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_lines_alt() -> *mut FfiTransformationAlt {
         let transformation = make_split_lines_alt();
-        FfiTransformationAlt::new(transformation)
+        FfiTransformationAlt::new_from_types(transformation)
     }
 
     #[no_mangle]
@@ -443,7 +443,7 @@ mod ffi {
         fn monomorphize<T>(impute: bool) -> *mut FfiTransformationAlt where
             T: 'static + FromStr + Default, T::Err: Debug {
             let transformation = make_parse_series_alt::<T>(impute);
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let impute = ffi_utils::to_bool(impute);
@@ -461,7 +461,7 @@ mod ffi {
     pub extern "C" fn opendp_ops__make_split_records_alt(separator: *const c_char) -> *mut FfiTransformationAlt {
         let separator = ffi_utils::to_option_str(separator);
         let transformation = make_split_records_alt(separator);
-        FfiTransformationAlt::new(transformation)
+        FfiTransformationAlt::new_from_types(transformation)
     }
 
     #[no_mangle]
@@ -475,7 +475,7 @@ mod ffi {
     pub extern "C" fn opendp_ops__make_create_dataframe_alt(col_count: c_uint) -> *mut FfiTransformationAlt {
         let col_count = col_count as usize;
         let transformation = make_create_dataframe_alt(col_count);
-        FfiTransformationAlt::new(transformation)
+        FfiTransformationAlt::new_from_types(transformation)
     }
 
     #[no_mangle]
@@ -491,7 +491,7 @@ mod ffi {
         let separator = ffi_utils::to_option_str(separator);
         let col_count = col_count as usize;
         let transformation = make_split_dataframe_alt(separator, col_count);
-        FfiTransformationAlt::new(transformation)
+        FfiTransformationAlt::new_from_types(transformation)
     }
 
     #[no_mangle]
@@ -511,11 +511,11 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column_alt(type_args: *const c_char, input_transformation: *const FfiTransformationAlt, key: *const c_char, impute: c_bool) -> *mut FfiTransformationAlt {
+    pub extern "C" fn opendp_ops__make_parse_column_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, key: *const c_char, impute: c_bool) -> *mut FfiTransformationAlt {
         fn monomorphize<T>(key: &str, impute: bool) -> *mut FfiTransformationAlt where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
             let transformation = make_parse_column_alt::<T>(key, impute);
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let key = ffi_utils::to_str(key);
@@ -539,11 +539,11 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column_alt(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformationAlt {
+    pub extern "C" fn opendp_ops__make_select_column_alt(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformationAlt {
         fn monomorphize<T>(key: &str) -> *mut FfiTransformationAlt where
             T: 'static + Element + Clone + PartialEq {
             let transformation = make_select_column_alt::<T>(key);
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let key = ffi_utils::to_str(key);
@@ -567,20 +567,20 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp_alt(type_args: *const c_char, input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
+    pub extern "C" fn opendp_ops__make_clamp_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
         fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt where
             T: 'static + Copy + PartialOrd {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
             let upper = ffi_utils::as_ref(upper as *const T).clone();
             let transformation = make_clamp_alt::<T>(lower, upper);
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, input_transformation: *const FfiTransformation, _lower: *const c_void, _upper: *const c_void) -> *mut FfiTransformation {
         fn monomorphize<T>(input_transformation: &FfiTransformation) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq + Sum {
             let input_transformation: &Transformation<(), Vec<T>> = input_transformation.as_ref();
@@ -594,13 +594,13 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum_alt(type_args: *const c_char, input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
+    pub extern "C" fn opendp_ops__make_bounded_sum_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
         fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt where
             T: 'static + Clone + PartialOrd + Sum {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
             let upper = ffi_utils::as_ref(upper as *const T).clone();
             let transformation = make_bounded_sum_alt::<T>(lower, upper);
-            FfiTransformationAlt::new(transformation)
+            FfiTransformationAlt::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
@@ -621,11 +621,11 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace_alt(type_args: *const c_char, input_transformation: *const FfiTransformationAlt, sigma: f64) -> *mut FfiMeasurementAlt {
+    pub extern "C" fn opendp_ops__make_base_laplace_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, sigma: f64) -> *mut FfiMeasurementAlt {
         fn monomorphize<T>(sigma: f64) -> *mut FfiMeasurementAlt where
             T: 'static + Copy + PartialEq + AddNoise {
             let measurement = make_base_laplace_alt::<T>(sigma);
-            FfiMeasurementAlt::new(measurement)
+            FfiMeasurementAlt::new_from_types(measurement)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (sigma))
