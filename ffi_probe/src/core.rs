@@ -1,21 +1,11 @@
 use std::rc::Rc;
 
-use crate::data::TraitObject;
-use crate::dom::AllDomain;
-use crate::ffi_utils;
-use crate::core::dummy::{DummyMetric, DummyMeasure, dummy_relation, DummyDomain};
+use crate::core::dummy::{dummy_relation, DummyDomain, DummyMeasure, DummyMetric};
 use crate::core::ffi::FfiGlue;
-
+use crate::ffi_utils;
 
 // BUILDING BLOCKS
-pub trait Domain: TraitObject {
-    type Carrier;
-    fn box_clone(&self) -> Box<dyn Domain<Carrier=Self::Carrier>>;
-    fn check_compatible(&self, other: &dyn Domain<Carrier=Self::Carrier>) -> bool;
-    fn check_valid(&self, val: &Self::Carrier) -> bool;
-}
-
-pub trait DomainAlt: Clone {
+pub trait Domain: Clone {
     type Carrier;
     fn check_compatible(&self, other: &Self) -> bool;
     fn check_valid(&self, val: &Self::Carrier) -> bool;
@@ -110,61 +100,7 @@ impl<I, O> Relation<I, O> {
 
 
 // MEASUREMENTS & TRANSFORMATIONS
-pub struct Measurement<I, O, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
-    pub input_domain: Box<dyn Domain<Carrier=I>>,
-    pub input_metric: IM,
-    pub output_domain: Box<dyn Domain<Carrier=O>>,
-    pub output_measure: OM,
-    pub privacy_relation: Relation<IM::Distance, OM::Distance>,
-    function: Rc<dyn Fn(*const I) -> Box<O>>,
-}
-
-impl<I, O> Measurement<I, O> {
-    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Self {
-        let input_metric = dummy::DummyMetric::<()>::new();
-        let output_measure = dummy::DummyMeasure::<()>::new();
-        let privacy_relation = dummy::dummy_relation();
-        Self::new_all(input_domain, input_metric, output_domain, output_measure, privacy_relation, function)
-    }
-}
-
-impl<I, O, IM: Metric, OM: Measure> Measurement<I, O, IM, OM> {
-    pub fn new_all(
-        input_domain: impl Domain<Carrier=I> + 'static,
-        input_metric: IM,
-        output_domain: impl Domain<Carrier=O> + 'static,
-        output_measure: OM,
-        privacy_relation: Relation<IM::Distance, OM::Distance>,
-        function: impl Fn(&I) -> O + 'static
-    ) -> Measurement<I, O, IM, OM> {
-        let function = move |arg: *const I| -> Box<O> {
-            let arg = ffi_utils::as_ref(arg);
-            let res = function(arg);
-            Box::new(res)
-        };
-        Measurement {
-            input_domain: Box::new(input_domain),
-            input_metric: input_metric,
-            output_domain: Box::new(output_domain),
-            output_measure: output_measure,
-            privacy_relation: privacy_relation,
-            function: Rc::new(function)
-        }
-    }
-
-    pub fn invoke(&self, arg: &I) -> O {
-        let arg = arg as *const I;
-        let res = (self.function)(arg);
-        *res
-    }
-
-    pub fn invoke_ffi(&self, arg: &Box<I>) -> Box<O> {
-        let arg = arg.as_ref() as *const I;
-        (self.function)(arg)
-    }
-}
-
-pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
+pub struct Measurement<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
     pub function: Function<ID::Carrier, OD::Carrier>,
@@ -173,7 +109,7 @@ pub struct MeasurementAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<(
     pub privacy_relation: Relation<IM::Distance, OM::Distance>,
 }
 
-impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD> {
+impl<ID: Domain, OD: Domain> Measurement<ID, OD> {
     pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
@@ -183,7 +119,7 @@ impl<ID: DomainAlt, OD: DomainAlt> MeasurementAlt<ID, OD> {
     }
 }
 
-impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> MeasurementAlt<ID, OD, IM, OM> {
+impl<ID: Domain, OD: Domain, IM: Metric, OM: Measure> Measurement<ID, OD, IM, OM> {
     pub fn new_all(
         input_domain: ID,
         output_domain: OD,
@@ -194,65 +130,11 @@ impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Measure> MeasurementAlt<ID, O
     ) -> Self {
         let input_domain = Box::new(input_domain);
         let output_domain = Box::new(output_domain);
-        MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
+        Measurement { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
     }
 }
 
-pub struct Transformation<I, O, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
-    pub input_domain: Box<dyn Domain<Carrier=I>>,
-    pub input_metric: IM,
-    pub output_domain: Box<dyn Domain<Carrier=O>>,
-    pub output_metric: OM,
-    pub stability_relation: Relation<IM::Distance, OM::Distance>,
-    function: Rc<dyn Fn(*const I) -> Box<O>>,
-}
-
-impl<I, O> Transformation<I, O> {
-    pub fn new(input_domain: impl Domain<Carrier=I> + 'static, output_domain: impl Domain<Carrier=O> + 'static, function: impl Fn(&I) -> O + 'static) -> Transformation<I, O> {
-        let input_metric = dummy::DummyMetric::<()>::new();
-        let output_metric = dummy::DummyMetric::<()>::new();
-        let stability_relation = dummy::dummy_relation();
-        Self::new_all(input_domain, input_metric, output_domain, output_metric, stability_relation, function)
-    }
-}
-
-impl<I, O, IM: Metric, OM: Metric> Transformation<I, O, IM, OM> {
-    pub fn new_all(
-        input_domain: impl Domain<Carrier=I> + 'static,
-        input_metric: IM,
-        output_domain: impl Domain<Carrier=O> + 'static,
-        output_metric: OM,
-        stability_relation: Relation<IM::Distance, OM::Distance>,
-        function: impl Fn(&I) -> O + 'static
-    ) -> Self {
-        let function = move |arg: *const I| -> Box<O> {
-            let arg = ffi_utils::as_ref(arg);
-            let res = function(arg);
-            Box::new(res)
-        };
-        Transformation {
-            input_domain: Box::new(input_domain),
-            input_metric: input_metric,
-            output_domain: Box::new(output_domain),
-            output_metric: output_metric,
-            stability_relation: stability_relation,
-            function: Rc::new(function)
-        }
-    }
-
-    pub fn invoke(&self, arg: &I) -> O {
-        let arg = arg as *const I;
-        let res = (self.function)(arg);
-        *res
-    }
-
-    pub fn invoke_ffi(&self, arg: &Box<I>) -> Box<O> {
-        let arg = arg.as_ref() as *const I;
-        (self.function)(arg)
-    }
-}
-
-pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
+pub struct Transformation<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
     pub function: Function<ID::Carrier, OD::Carrier>,
@@ -261,7 +143,7 @@ pub struct TransformationAlt<ID: DomainAlt, OD: DomainAlt, IM: Metric=DummyMetri
     pub stability_relation: Relation<IM::Distance, OM::Distance>,
 }
 
-impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD> {
+impl<ID: Domain, OD: Domain> Transformation<ID, OD> {
     pub fn new(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
@@ -271,7 +153,7 @@ impl<ID: DomainAlt, OD: DomainAlt> TransformationAlt<ID, OD> {
     }
 }
 
-impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metric> TransformationAlt<ID, OD, IM, OM> {
+impl<ID: Domain, OD: Domain, IM: Metric, OM: Metric> Transformation<ID, OD, IM, OM> {
     pub fn new_all(
         input_domain: ID,
         output_domain: OD,
@@ -282,45 +164,22 @@ impl<ID: DomainAlt, OD: DomainAlt, IM: Metric, OM: Metric> TransformationAlt<ID,
     ) -> Self {
         let input_domain = Box::new(input_domain);
         let output_domain = Box::new(output_domain);
-        TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
+        Transformation { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
     }
 }
 
 
 // CHAINING & COMPOSITION
-pub fn make_chain_mt<I: 'static, X: 'static, O: 'static>(measurement: &Measurement<X, O>, transformation: &Transformation<I, X>) -> Measurement<I, O> {
-    assert!(transformation.output_domain.check_compatible(measurement.input_domain.as_ref()));
-    let input_domain = transformation.input_domain.box_clone();
-    let input_metric = transformation.input_metric.clone();
-    let output_domain = measurement.output_domain.box_clone();
-    let output_measure = measurement.output_measure.clone();
-    let function0 = transformation.function.clone();
-    let function1 = measurement.function.clone();
-    let function = move |arg: *const I| -> Box<O> {
-        let res0 = function0(arg);
-        function1(&*res0)
-    };
-    let function = Box::new(function);
-    Measurement {
-        input_domain: input_domain,
-        input_metric: input_metric,
-        output_domain: output_domain,
-        output_measure: output_measure,
-        privacy_relation: dummy::dummy_relation(),
-        function: Rc::new(function)
-    }
-}
-
-pub fn make_chain_mt_alt<ID, XD, OD, IM, XM, OM>(measurement1: &MeasurementAlt<XD, OD, XM, OM>, transformation0: &TransformationAlt<ID, XD, IM, XM>) -> MeasurementAlt<ID, OD, IM, OM> where
-    ID: 'static + DomainAlt, XD: 'static + DomainAlt, OD: 'static + DomainAlt, IM: Metric, XM: Metric, OM: Measure {
+pub fn make_chain_mt<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>) -> Measurement<ID, OD, IM, OM> where
+    ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: Metric, XM: Metric, OM: Measure {
     let input_glue = FfiGlue::<ID>::new_from_type();
     let x_glue = FfiGlue::<XD>::new_from_type();
     let output_glue = FfiGlue::<OD>::new_from_type();
-    make_chain_mt_alt_core(measurement1, transformation0, &input_glue, &x_glue, &output_glue)
+    make_chain_mt_core(measurement1, transformation0, &input_glue, &x_glue, &output_glue)
 }
 
-fn make_chain_mt_alt_core<ID, XD, OD, IM, XM, OM>(measurement1: &MeasurementAlt<XD, OD, XM, OM>, transformation0: &TransformationAlt<ID, XD, IM, XM>, input_glue: &FfiGlue<ID>, x_glue: &FfiGlue<XD>, output_glue: &FfiGlue<OD>) -> MeasurementAlt<ID, OD, IM, OM> where
-    ID: 'static + DomainAlt, XD: 'static + DomainAlt, OD: 'static + DomainAlt, IM: Metric, XM: Metric, OM: Measure {
+fn make_chain_mt_core<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &FfiGlue<ID>, x_glue: &FfiGlue<XD>, output_glue: &FfiGlue<OD>) -> Measurement<ID, OD, IM, OM> where
+    ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: Metric, XM: Metric, OM: Measure {
     assert!((x_glue.eq)(&transformation0.output_domain, &measurement1.input_domain));
     let input_domain = (input_glue.clone_)(&transformation0.input_domain);
     let output_domain = (output_glue.clone_)(&measurement1.output_domain);
@@ -328,42 +187,19 @@ fn make_chain_mt_alt_core<ID, XD, OD, IM, XM, OM>(measurement1: &MeasurementAlt<
     let input_metric = transformation0.input_metric.clone();
     let output_measure = measurement1.output_measure.clone();
     let privacy_relation = dummy_relation();
-    MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
+    Measurement { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
-pub fn make_chain_tt<I: 'static, X: 'static, O: 'static>(transformation1: &Transformation<X, O>, transformation0: &Transformation<I, X>) -> Transformation<I, O> {
-    assert!(transformation0.output_domain.check_compatible(transformation1.input_domain.as_ref()));
-    let input_domain = transformation0.input_domain.box_clone();
-    let input_metric = transformation0.input_metric.clone();
-    let output_domain = transformation1.output_domain.box_clone();
-    let output_metric = transformation1.output_metric.clone();
-    let function0 = transformation0.function.clone();
-    let function1 = transformation1.function.clone();
-    let function = move |arg: *const I| -> Box<O> {
-        let res0 = function0(arg);
-        function1(&*res0)
-    };
-    let function = Box::new(function);
-    Transformation {
-        input_domain: input_domain,
-        input_metric: input_metric,
-        output_domain: output_domain,
-        output_metric: output_metric,
-        stability_relation: dummy::dummy_relation(),
-        function: Rc::new(function)
-    }
-}
-
-pub fn make_chain_tt_alt<ID, XD, OD, IM, XM, OM>(transformation1: &TransformationAlt<XD, OD, XM, OM>, transformation0: &TransformationAlt<ID, XD, IM, XM>) -> TransformationAlt<ID, OD, IM, OM> where
-    ID: 'static + DomainAlt, XD: 'static + DomainAlt, OD: 'static + DomainAlt, IM: Metric, XM: Metric, OM: Metric {
+pub fn make_chain_tt<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>) -> Transformation<ID, OD, IM, OM> where
+    ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: Metric, XM: Metric, OM: Metric {
     let input_glue = FfiGlue::<ID>::new_from_type();
     let x_glue = FfiGlue::<XD>::new_from_type();
     let output_glue = FfiGlue::<OD>::new_from_type();
-    make_chain_tt_alt_core(transformation1, transformation0, &input_glue, &x_glue, &output_glue)
+    make_chain_tt_core(transformation1, transformation0, &input_glue, &x_glue, &output_glue)
 }
 
-fn make_chain_tt_alt_core<ID, XD, OD, IM, XM, OM>(transformation1: &TransformationAlt<XD, OD, XM, OM>, transformation0: &TransformationAlt<ID, XD, IM, XM>, input_glue: &FfiGlue<ID>, x_glue: &FfiGlue<XD>, output_glue: &FfiGlue<OD>) -> TransformationAlt<ID, OD, IM, OM> where
-    ID: 'static + DomainAlt, XD: 'static + DomainAlt, OD: 'static + DomainAlt, IM: Metric, XM: Metric, OM: Metric {
+fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &FfiGlue<ID>, x_glue: &FfiGlue<XD>, output_glue: &FfiGlue<OD>) -> Transformation<ID, OD, IM, OM> where
+    ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: Metric, XM: Metric, OM: Metric {
     assert!((x_glue.eq)(&transformation0.output_domain, &transformation1.input_domain));
     let input_domain = (input_glue.clone_)(&transformation0.input_domain);
     let output_domain = (output_glue.clone_)(&transformation1.output_domain);
@@ -371,47 +207,19 @@ fn make_chain_tt_alt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformati
     let input_metric = transformation0.input_metric.clone();
     let output_metric = transformation1.output_metric.clone();
     let stability_relation = dummy_relation();
-    TransformationAlt { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
+    Transformation { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
 }
 
-pub fn make_composition<I: 'static, OA: 'static, OB: 'static>(measurement0: &Measurement<I, OA>, measurement1: &Measurement<I, OB>) -> Measurement<I, (Box<OA>, Box<OB>)> {
-    assert!(measurement0.input_domain.check_compatible(measurement1.input_domain.as_ref()));
-    let input_domain = measurement0.input_domain.box_clone();
-    // TODO: Figure out input_metric for composition.
-    let input_metric = measurement0.input_metric.clone();
-    let _output_domain0 = measurement0.output_domain.box_clone();
-    let _output_domain1 = measurement1.output_domain.box_clone();
-    // TODO: Figure out output_domain for composition.
-    let output_domain = Box::new(AllDomain::<(Box<OA>, Box<OB>)>::new());
-    // TODO: Figure out output_measure for composition.
-    let output_measure = measurement0.output_measure.clone();
-    let function0 = measurement0.function.clone();
-    let function1 = measurement1.function.clone();
-    let function = move |arg: *const I| -> Box<(Box<OA>, Box<OB>)> {
-        let res0 = function0(arg);
-        let res1 = function1(arg);
-        Box::new((res0, res1))
-    };
-    Measurement {
-        input_domain: input_domain,
-        input_metric: input_metric,
-        output_domain: output_domain,
-        output_measure: output_measure,
-        privacy_relation: dummy::dummy_relation(),
-        function: Rc::new(function)
-    }
-}
-
-pub fn make_composition_alt<ID, OD0, OD1, IM, OM>(measurement0: &MeasurementAlt<ID, OD0, IM, OM>, measurement1: &MeasurementAlt<ID, OD1, IM, OM>) -> MeasurementAlt<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
-    ID: 'static + DomainAlt, OD0: 'static + DomainAlt, OD1: 'static + DomainAlt, IM: Metric, OM: Measure {
+pub fn make_composition<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>) -> Measurement<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
+    ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: Metric, OM: Measure {
     let input_glue = FfiGlue::<ID>::new_from_type();
     let output_glue0 = FfiGlue::<OD0>::new_from_type();
     let output_glue1 = FfiGlue::<OD1>::new_from_type();
-    make_composition_alt_core(measurement0, measurement1, &input_glue, &output_glue0, &output_glue1)
+    make_composition_core(measurement0, measurement1, &input_glue, &output_glue0, &output_glue1)
 }
 
-fn make_composition_alt_core<ID, OD0, OD1, IM, OM>(measurement0: &MeasurementAlt<ID, OD0, IM, OM>, measurement1: &MeasurementAlt<ID, OD1, IM, OM>, input_glue: &FfiGlue<ID>, _output_glue0: &FfiGlue<OD0>, _output_glue1: &FfiGlue<OD1>) -> MeasurementAlt<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
-    ID: 'static + DomainAlt, OD0: 'static + DomainAlt, OD1: 'static + DomainAlt, IM: Metric, OM: Measure {
+fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>, input_glue: &FfiGlue<ID>, _output_glue0: &FfiGlue<OD0>, _output_glue1: &FfiGlue<OD1>) -> Measurement<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
+    ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: Metric, OM: Measure {
     assert!((input_glue.eq)(&measurement0.input_domain, &measurement1.input_domain));
     let input_domain = (input_glue.clone_)(&measurement0.input_domain);
     // TODO: Figure out output_domain for composition.
@@ -422,19 +230,19 @@ fn make_composition_alt_core<ID, OD0, OD1, IM, OM>(measurement0: &MeasurementAlt
     // TODO: Figure out output_measure for composition.
     let output_measure = measurement0.output_measure.clone();
     let privacy_relation = dummy_relation();
-    MeasurementAlt { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
+    Measurement { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
 
 // FFI BINDINGS
 pub(crate) mod ffi {
+    use std::intrinsics::transmute;
     use std::os::raw::c_char;
 
     use crate::ffi_utils;
     use crate::mono::Type;
 
     use super::*;
-    use std::intrinsics::transmute;
 
     pub struct FfiObject {
         pub type_: Type,
@@ -468,13 +276,13 @@ pub(crate) mod ffi {
     }
 
     #[derive(Clone)]
-    pub struct FfiGlue<D: DomainAlt> {
+    pub struct FfiGlue<D: Domain> {
         pub type_: Type,
         pub carrier: Type,
         pub eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
         pub clone_: Rc<dyn Fn(&Box<D>) -> Box<D>>,
     }
-    impl<D: 'static + DomainAlt> FfiGlue<D> {
+    impl<D: 'static + Domain> FfiGlue<D> {
         pub fn new_from_type() -> Self {
             let type_ = Type::new::<D>();
             let carrier = Type::new::<D::Carrier>();
@@ -495,47 +303,20 @@ pub(crate) mod ffi {
 
     #[derive(Clone)]
     pub struct FfiDomain;
-    impl DomainAlt for FfiDomain {
+    impl Domain for FfiDomain {
         type Carrier = ();
         fn check_compatible(&self, _other: &Self) -> bool { unimplemented!() }
         fn check_valid(&self, _val: &Self::Carrier) -> bool { unimplemented!() }
     }
 
     pub struct FfiMeasurement {
-        pub input_type: Type,
-        pub output_type: Type,
-        pub value: Box<Measurement<(), ()>>,
+        pub input_glue: FfiGlue<FfiDomain>,
+        pub output_glue: FfiGlue<FfiDomain>,
+        pub value: Box<Measurement<FfiDomain, FfiDomain>>,
     }
 
     impl FfiMeasurement {
-        pub fn new_typed<I, O>(input_type: Type, output_type: Type, value: Measurement<I, O>) -> *mut FfiMeasurement {
-            let value = ffi_utils::into_box(value);
-            let measurement = FfiMeasurement { input_type, output_type, value };
-            ffi_utils::into_raw(measurement)
-        }
-
-        pub fn new<I: 'static, O: 'static>(value: Measurement<I, O>) -> *mut FfiMeasurement {
-            let input_type = Type::new::<I>();
-            let output_type = Type::new::<O>();
-            Self::new_typed(input_type, output_type, value)
-        }
-
-        // pub fn as_ref<I, O>(&self) -> &Measurement<I, O> {
-        //     // TODO: Check types.
-        //     let value = self.value.as_ref() as *const Measurement<(), ()> as *const Measurement<I, O>;
-        //     let value = unsafe { value.as_ref() };
-        //     value.unwrap()
-        // }
-    }
-
-    pub struct FfiMeasurementAlt {
-        pub input_glue: FfiGlue<FfiDomain>,
-        pub output_glue: FfiGlue<FfiDomain>,
-        pub value: Box<MeasurementAlt<FfiDomain, FfiDomain>>,
-    }
-
-    impl FfiMeasurementAlt {
-        pub fn new_from_types<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(value: MeasurementAlt<ID, OD>) -> *mut FfiMeasurementAlt {
+        pub fn new_from_types<ID: 'static + Domain, OD: 'static + Domain>(value: Measurement<ID, OD>) -> *mut FfiMeasurement {
             let input_domain_glue = FfiGlue::<ID>::new_from_type();
             let input_domain_glue = unsafe { transmute(input_domain_glue) };
             let output_domain_glue = FfiGlue::<OD>::new_from_type();
@@ -543,48 +324,21 @@ pub(crate) mod ffi {
             Self::new(input_domain_glue, output_domain_glue, value)
         }
 
-        pub fn new<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(input_glue: FfiGlue<FfiDomain>, output_glue: FfiGlue<FfiDomain>, value: MeasurementAlt<ID, OD>) -> *mut FfiMeasurementAlt {
+        pub fn new<ID: 'static + Domain, OD: 'static + Domain>(input_glue: FfiGlue<FfiDomain>, output_glue: FfiGlue<FfiDomain>, value: Measurement<ID, OD>) -> *mut FfiMeasurement {
             let value = ffi_utils::into_box(value);
-            let ffi_measurement = FfiMeasurementAlt { input_glue, output_glue, value };
+            let ffi_measurement = FfiMeasurement { input_glue, output_glue, value };
             ffi_utils::into_raw(ffi_measurement)
         }
     }
 
     pub struct FfiTransformation {
-        pub input_type: Type,
-        pub output_type: Type,
-        pub value: Box<Transformation<(), ()>>,
+        pub input_glue: FfiGlue<FfiDomain>,
+        pub output_glue: FfiGlue<FfiDomain>,
+        pub value: Box<Transformation<FfiDomain, FfiDomain>>,
     }
 
     impl FfiTransformation {
-        pub fn new_typed<I, O>(input_type: Type, output_type: Type, value: Transformation<I, O>) -> *mut FfiTransformation {
-            let value = ffi_utils::into_box(value);
-            let transformation = FfiTransformation { input_type, output_type, value };
-            ffi_utils::into_raw(transformation)
-        }
-
-        pub fn new<I: 'static, O: 'static>(value: Transformation<I, O>) -> *mut FfiTransformation {
-            let input_type = Type::new::<I>();
-            let output_type = Type::new::<O>();
-            Self::new_typed(input_type, output_type, value)
-        }
-
-        pub fn as_ref<I, O>(&self) -> &Transformation<I, O> {
-            // TODO: Check types.
-            let value = self.value.as_ref() as *const Transformation<(), ()> as *const Transformation<I, O>;
-            let value = unsafe { value.as_ref() };
-            value.unwrap()
-        }
-    }
-
-    pub struct FfiTransformationAlt {
-        pub input_glue: FfiGlue<FfiDomain>,
-        pub output_glue: FfiGlue<FfiDomain>,
-        pub value: Box<TransformationAlt<FfiDomain, FfiDomain>>,
-    }
-
-    impl FfiTransformationAlt {
-        pub fn new_from_types<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(value: TransformationAlt<ID, OD>) -> *mut FfiTransformationAlt {
+        pub fn new_from_types<ID: 'static + Domain, OD: 'static + Domain>(value: Transformation<ID, OD>) -> *mut FfiTransformation {
             let input_glue = FfiGlue::<ID>::new_from_type();
             let input_glue = unsafe { transmute(input_glue) };
             let output_glue = FfiGlue::<OD>::new_from_type();
@@ -592,25 +346,15 @@ pub(crate) mod ffi {
             Self::new(input_glue, output_glue, value)
         }
 
-        pub fn new<ID: 'static + DomainAlt, OD: 'static + DomainAlt>(input_glue: FfiGlue<FfiDomain>, output_glue: FfiGlue<FfiDomain>, value: TransformationAlt<ID, OD>) -> *mut FfiTransformationAlt {
+        pub fn new<ID: 'static + Domain, OD: 'static + Domain>(input_glue: FfiGlue<FfiDomain>, output_glue: FfiGlue<FfiDomain>, value: Transformation<ID, OD>) -> *mut FfiTransformation {
             let value = ffi_utils::into_box(value);
-            let ffi_transformation = FfiTransformationAlt { input_glue, output_glue, value };
+            let ffi_transformation = FfiTransformation { input_glue, output_glue, value };
             ffi_utils::into_raw(ffi_transformation)
         }
     }
 
     #[no_mangle]
     pub extern "C" fn opendp_core__measurement_invoke(this: *const FfiMeasurement, arg: *const FfiObject) -> *mut FfiObject {
-        let this = ffi_utils::as_ref(this);
-        let arg = ffi_utils::as_ref(arg);
-        assert_eq!(arg.type_, this.input_type);
-        let res_type = this.output_type.clone();
-        let res = this.value.invoke_ffi(&arg.value);
-        FfiObject::new_typed(res_type, res)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__measurement_invoke_alt(this: *const FfiMeasurementAlt, arg: *const FfiObject) -> *mut FfiObject {
         let this = ffi_utils::as_ref(this);
         let arg = ffi_utils::as_ref(arg);
         assert_eq!(arg.type_, this.input_glue.carrier);
@@ -625,22 +369,7 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__measurement_free_alt(this: *mut FfiMeasurementAlt) {
-        ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__transformation_invoke(this: *const FfiTransformation, arg: *const FfiObject) -> *mut FfiObject {
-        let this = ffi_utils::as_ref(this);
-        let arg = ffi_utils::as_ref(arg);
-        assert_eq!(arg.type_, this.input_type);
-        let res_type = this.output_type.clone();
-        let res = this.value.invoke_ffi(&arg.value);
-        FfiObject::new_typed(res_type, res)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__transformation_invoke_alt(this: *const FfiTransformationAlt, arg: *const FfiObject) -> *mut FfiObject {
         let this = ffi_utils::as_ref(this);
         let arg = ffi_utils::as_ref(arg);
         assert_eq!(arg.type_, this.input_glue.carrier);
@@ -655,69 +384,31 @@ pub(crate) mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_core__transformation_free_alt(this: *mut FfiTransformationAlt) {
-        ffi_utils::into_owned(this);
-    }
-
-    #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_mt(measurement1: *mut FfiMeasurement, transformation0: *mut FfiTransformation) -> *mut FfiMeasurement {
-        let transformation0 = ffi_utils::as_ref(transformation0);
-        let measurement1 = ffi_utils::as_ref(measurement1);
-        assert_eq!(transformation0.output_type, measurement1.input_type);
-        let input_type = transformation0.input_type.clone();
-        let output_type = measurement1.output_type.clone();
-        let measurement = make_chain_mt(&measurement1.value, &transformation0.value);
-        FfiMeasurement::new_typed(input_type, output_type, measurement)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__make_chain_mt_alt(measurement1: *mut FfiMeasurementAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiMeasurementAlt {
         let transformation0 = ffi_utils::as_ref(transformation0);
         let measurement1 = ffi_utils::as_ref(measurement1);
         assert_eq!(transformation0.output_glue.type_, measurement1.input_glue.type_);
         let input_glue = transformation0.input_glue.clone();
         let x_glue = transformation0.output_glue.clone();
         let output_glue = measurement1.output_glue.clone();
-        let measurement = make_chain_mt_alt_core(&measurement1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
-        FfiMeasurementAlt::new(input_glue, output_glue, measurement)
+        let measurement = make_chain_mt_core(&measurement1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
+        FfiMeasurement::new(input_glue, output_glue, measurement)
     }
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_chain_tt(transformation1: *mut FfiTransformation, transformation0: *mut FfiTransformation) -> *mut FfiTransformation {
         let transformation0 = ffi_utils::as_ref(transformation0);
         let transformation1 = ffi_utils::as_ref(transformation1);
-        assert_eq!(transformation0.output_type, transformation1.input_type);
-        let input_type = transformation0.input_type.clone();
-        let output_type = transformation1.output_type.clone();
-        let transformation = make_chain_tt(&transformation1.value, &transformation0.value);
-        FfiTransformation::new_typed(input_type, output_type, transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__make_chain_tt_alt(transformation1: *mut FfiTransformationAlt, transformation0: *mut FfiTransformationAlt) -> *mut FfiTransformationAlt {
-        let transformation0 = ffi_utils::as_ref(transformation0);
-        let transformation1 = ffi_utils::as_ref(transformation1);
         assert_eq!(transformation0.output_glue.type_, transformation1.input_glue.type_);
         let input_glue = transformation0.input_glue.clone();
         let x_glue = transformation0.output_glue.clone();
         let output_glue = transformation1.output_glue.clone();
-        let transformation = make_chain_tt_alt_core(&transformation1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
-        FfiTransformationAlt::new(input_glue, output_glue, transformation)
+        let transformation = make_chain_tt_core(&transformation1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
+        FfiTransformation::new(input_glue, output_glue, transformation)
     }
 
     #[no_mangle]
     pub extern "C" fn opendp_core__make_composition(measurement0: *mut FfiMeasurement, measurement1: *mut FfiMeasurement) -> *mut FfiMeasurement {
-        let measurement0 = ffi_utils::as_ref(measurement0);
-        let measurement1 = ffi_utils::as_ref(measurement1);
-        assert_eq!(measurement0.input_type, measurement1.input_type);
-        let input_type = measurement0.input_type.clone();
-        let output_type = Type::new_box_pair(&measurement0.output_type, &measurement1.output_type);
-        let measurement = make_composition(&measurement0.value, &measurement1.value);
-        FfiMeasurement::new_typed(input_type, output_type, measurement)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_core__make_composition_alt(measurement0: *mut FfiMeasurementAlt, measurement1: *mut FfiMeasurementAlt) -> *mut FfiMeasurementAlt {
         let measurement0 = ffi_utils::as_ref(measurement0);
         let measurement1 = ffi_utils::as_ref(measurement1);
         assert_eq!(measurement0.input_glue.type_, measurement1.input_glue.type_);
@@ -730,8 +421,8 @@ pub(crate) mod ffi {
         let output_glue_eq = Rc::new(|_d0: &Box<FfiDomain>, _d1: &Box<FfiDomain>| false);
         let output_glue_clone = Rc::new(|d: &Box<FfiDomain>| d.clone());
         let output_glue = FfiGlue::<FfiDomain>::new(output_glue_type, output_glue_carrier, output_glue_eq, output_glue_clone);
-        let measurement = make_composition_alt_core(&measurement0.value, &measurement1.value, &input_glue, &output_glue0, &output_glue1);
-        FfiMeasurementAlt::new(input_glue, output_glue, measurement)
+        let measurement = make_composition_core(&measurement0.value, &measurement1.value, &input_glue, &output_glue0, &output_glue1);
+        FfiMeasurement::new(input_glue, output_glue, measurement)
     }
 
     #[no_mangle]
@@ -757,21 +448,13 @@ r#"{
 // UNIT TESTS
 #[cfg(test)]
 mod tests {
-    use crate::dom::{AllDomain, AllDomainAlt};
+    use crate::dom::AllDomain;
 
     use super::*;
 
     #[test]
     fn test_identity() {
-        let identity = Transformation::<i32, i32>::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
-        let arg = 99;
-        let ret = identity.invoke(&arg);
-        assert_eq!(ret, 99);
-    }
-
-    #[test]
-    fn test_identity_alt() {
-        let identity = TransformationAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<i32>::new(), |arg: &i32| arg.clone());
+        let identity = Transformation::new(AllDomain::<i32>::new(), AllDomain::<i32>::new(), |arg: &i32| arg.clone());
         let arg = 99;
         let ret = identity.function.eval(&arg);
         assert_eq!(ret, 99);
@@ -783,16 +466,6 @@ mod tests {
         let measurement = Measurement::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |a: &i32| (a + 1) as f64);
         let chain = make_chain_mt(&measurement, &transformation);
         let arg = 99_u8;
-        let ret = chain.invoke(&arg);
-        assert_eq!(ret, 101.0);
-    }
-
-    #[test]
-    fn test_make_chain_mt_alt() {
-        let transformation = TransformationAlt::new(AllDomainAlt::<u8>::new(), AllDomainAlt::<i32>::new(), |a: &u8| (a + 1) as i32);
-        let measurement = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |a: &i32| (a + 1) as f64);
-        let chain = make_chain_mt_alt(&measurement, &transformation);
-        let arg = 99_u8;
         let ret = chain.function.eval(&arg);
         assert_eq!(ret, 101.0);
     }
@@ -803,16 +476,6 @@ mod tests {
         let transformation1 = Transformation::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |a: &i32| (a + 1) as f64);
         let chain = make_chain_tt(&transformation1, &transformation0);
         let arg = 99_u8;
-        let ret = chain.invoke(&arg);
-        assert_eq!(ret, 101.0);
-    }
-
-    #[test]
-    fn test_make_chain_tt_alt() {
-        let transformation0 = TransformationAlt::new(AllDomainAlt::<u8>::new(), AllDomainAlt::<i32>::new(), |a: &u8| (a + 1) as i32);
-        let transformation1 = TransformationAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |a: &i32| (a + 1) as f64);
-        let chain = make_chain_tt_alt(&transformation1, &transformation0);
-        let arg = 99_u8;
         let ret = chain.function.eval(&arg);
         assert_eq!(ret, 101.0);
     }
@@ -821,17 +484,7 @@ mod tests {
     fn test_make_composition() {
         let measurement0 = Measurement::new(AllDomain::<i32>::new(), AllDomain::<f32>::new(), |arg: &i32| (arg + 1) as f32);
         let measurement1 = Measurement::new(AllDomain::<i32>::new(), AllDomain::<f64>::new(), |arg: &i32| (arg - 1) as f64);
-        let chain = make_composition(&measurement0, &measurement1);
-        let arg = 99;
-        let ret = chain.invoke(&arg);
-        assert_eq!(ret, (Box::new(100_f32), Box::new(98_f64)));
-    }
-
-    #[test]
-    fn test_make_composition_alt() {
-        let measurement0 = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f32>::new(), |arg: &i32| (arg + 1) as f32);
-        let measurement1 = MeasurementAlt::new(AllDomainAlt::<i32>::new(), AllDomainAlt::<f64>::new(), |arg: &i32| (arg - 1) as f64);
-        let composition = make_composition_alt(&measurement0, &measurement1);
+        let composition = make_composition(&measurement0, &measurement1);
         let arg = 99;
         let ret = composition.function.eval(&arg);
         assert_eq!(ret, (Box::new(100_f32), Box::new(98_f64)));
@@ -842,8 +495,9 @@ mod tests {
 
 // PLACEHOLDERS
 mod dummy {
-    use super::*;
     use std::marker::PhantomData;
+
+    use super::*;
 
     pub struct DummyDomain<T> {
         _marker: PhantomData<T>
@@ -856,7 +510,7 @@ mod dummy {
     impl<T> Clone for DummyDomain<T> {
         fn clone(&self) -> Self { Self::new() }
     }
-    impl<T: 'static> DomainAlt for DummyDomain<T> {
+    impl<T: 'static> Domain for DummyDomain<T> {
         type Carrier=T;
         fn check_compatible(&self, _other: &Self) -> bool { true }
         fn check_valid(&self, _val: &Self::Carrier) -> bool { true }

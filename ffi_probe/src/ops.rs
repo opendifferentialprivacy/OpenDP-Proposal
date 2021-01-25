@@ -7,27 +7,17 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Domain, Measurement, Transformation, TransformationAlt, MeasurementAlt};
+use crate::core::{Measurement, Transformation};
 use crate::data::{Data, Element, Form};
-use crate::dom::{AllDomain, DataDomain, HeterogeneousMapDomain, IntervalDomain, VectorDomain, AllDomainAlt, VectorDomainAlt, MapDomainAlt, IntervalDomainAlt};
+use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
-
-pub fn make_identity<T: 'static + Form + Clone>() -> Transformation<T, T> {
+pub fn make_identity<T: Clone>() -> Transformation<AllDomain<T>, AllDomain<T>> {
     let input_domain = AllDomain::<T>::new();
     let output_domain = AllDomain::<T>::new();
     let function = |arg: &T| -> T {
         arg.clone()
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_identity_alt<T: Clone>() -> TransformationAlt<AllDomainAlt<T>, AllDomainAlt<T>> {
-    let input_domain = AllDomainAlt::<T>::new();
-    let output_domain = AllDomainAlt::<T>::new();
-    let function = |arg: &T| -> T {
-        arg.clone()
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn vec_string_to_str(src: &Vec<String>) -> Vec<&str> {
@@ -42,24 +32,14 @@ fn split_lines(s: &str) -> Vec<&str> {
     s.lines().collect()
 }
 
-pub fn make_split_lines() -> Transformation<String, Vec<String>> {
+pub fn make_split_lines() -> Transformation<AllDomain<String>, VectorDomain<AllDomain<String>>> {
     let input_domain = AllDomain::<String>::new();
-    let output_domain = VectorDomain::<String>::new_all();
+    let output_domain = VectorDomain::new_all();
     let function = |arg: &String| -> Vec<String> {
         let ret = split_lines(arg);
         vec_str_to_string(ret)
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_split_lines_alt() -> TransformationAlt<AllDomainAlt<String>, VectorDomainAlt<AllDomainAlt<String>>> {
-    let input_domain = AllDomainAlt::<String>::new();
-    let output_domain = VectorDomainAlt::new_all();
-    let function = |arg: &String| -> Vec<String> {
-        let ret = split_lines(arg);
-        vec_str_to_string(ret)
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
@@ -72,26 +52,15 @@ fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     }
 }
 
-pub fn make_parse_series<T>(impute: bool) -> Transformation<Vec<String>, Vec<T>> where
-    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-    let input_domain = VectorDomain::<String>::new_all();
-    let output_domain = VectorDomain::<T>::new_all();
+pub fn make_parse_series<T>(impute: bool) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<AllDomain<T>>> where
+    T: FromStr + Default, T::Err: Debug {
+    let input_domain = VectorDomain::new_all();
+    let output_domain = VectorDomain::new_all();
     let function = move |arg: &Vec<String>| -> Vec<T> {
         let arg = vec_string_to_str(arg);
         parse_series(&arg, impute)
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_parse_series_alt<T>(impute: bool) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<String>>, VectorDomainAlt<AllDomainAlt<T>>> where
-    T: FromStr + Default, T::Err: Debug {
-    let input_domain = VectorDomainAlt::new_all();
-    let output_domain = VectorDomainAlt::new_all();
-    let function = move |arg: &Vec<String>| -> Vec<T> {
-        let arg = vec_string_to_str(arg);
-        parse_series(&arg, impute)
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
@@ -101,28 +70,16 @@ fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>>
     lines.into_iter().map(|e| split(e, separator)).collect()
 }
 
-pub fn make_split_records(separator: Option<&str>) -> Transformation<Vec<String>, Vec<Vec<String>>> {
+pub fn make_split_records(separator: Option<&str>) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<VectorDomain<AllDomain<String>>>> {
     let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = VectorDomain::<String>::new_all();
-    let output_domain = VectorDomain::<Vec<String>>::new(VectorDomain::<String>::new_all());
+    let input_domain = VectorDomain::new_all();
+    let output_domain = VectorDomain::new(VectorDomain::new_all());
     let function = move |arg: &Vec<String>| -> Vec<Vec<String>> {
         let arg = vec_string_to_str(arg);
         let ret = split_records(&separator, &arg);
         ret.into_iter().map(vec_str_to_string).collect()
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_split_records_alt(separator: Option<&str>) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<String>>, VectorDomainAlt<VectorDomainAlt<AllDomainAlt<String>>>> {
-    let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = VectorDomainAlt::new_all();
-    let output_domain = VectorDomainAlt::new(VectorDomainAlt::new_all());
-    let function = move |arg: &Vec<String>| -> Vec<Vec<String>> {
-        let arg = vec_string_to_str(arg);
-        let ret = split_records(&separator, &arg);
-        ret.into_iter().map(vec_str_to_string).collect()
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn conform_records<'a>(len: usize, records: &Vec<Vec<&'a str>>) -> Vec<Vec<&'a str>> {
@@ -151,35 +108,18 @@ fn create_dataframe(col_count: usize, records: &Vec<Vec<&str>>) -> DataFrame {
     cols.into_iter().enumerate().map(|(k, v)| (k.to_string(), Data::new(vec_str_to_string(v)))).collect()
 }
 
-pub fn create_raw_dataframe_domain(col_count: usize) -> impl Domain<Carrier=DataFrame> {
-    let element_domain = DataDomain::<Vec<String>>::new(VectorDomain::<String>::new_all());
-    let element_domain: Box<dyn Domain<Carrier=Data>> = Box::new(element_domain);
-    let element_domains: HashMap<_, _> = (0..col_count).map(|e| (e.to_string(), element_domain.box_clone())).collect();
-    HeterogeneousMapDomain::new(element_domains)
+pub fn create_dataframe_domain() -> MapDomain<AllDomain<Data>> {
+    MapDomain::new(AllDomain::new())
 }
 
-pub fn create_dataframe_domain_alt() -> MapDomainAlt<AllDomainAlt<Data>> {
-    MapDomainAlt::new(AllDomainAlt::new())
-}
-
-pub fn make_create_dataframe(col_count: usize) -> Transformation<Vec<Vec<String>>, DataFrame> {
-    let input_domain = VectorDomain::<Vec<String>>::new(VectorDomain::<String>::new_all());
-    let output_domain = create_raw_dataframe_domain(col_count);
+pub fn make_create_dataframe(col_count: usize) -> Transformation<VectorDomain<VectorDomain<AllDomain<String>>>, MapDomain<AllDomain<Data>>> {
+    let input_domain = VectorDomain::new(VectorDomain::new_all());
+    let output_domain = create_dataframe_domain();
     let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
         let arg = arg.into_iter().map(|e| vec_string_to_str(e)).collect();
         create_dataframe(col_count, &arg)
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_create_dataframe_alt(col_count: usize) -> TransformationAlt<VectorDomainAlt<VectorDomainAlt<AllDomainAlt<String>>>, MapDomainAlt<AllDomainAlt<Data>>> {
-    let input_domain = VectorDomainAlt::new(VectorDomainAlt::new_all());
-    let output_domain = create_dataframe_domain_alt();
-    let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
-        let arg = arg.into_iter().map(|e| vec_string_to_str(e)).collect();
-        create_dataframe(col_count, &arg)
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame {
@@ -189,24 +129,14 @@ fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame 
     create_dataframe(col_count, &records)
 }
 
-pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transformation<String, DataFrame> {
+pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transformation<AllDomain<String>, MapDomain<AllDomain<Data>>> {
     let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = AllDomain::<String>::new();
-    let output_domain = create_raw_dataframe_domain(col_count);
+    let input_domain = AllDomain::new();
+    let output_domain = create_dataframe_domain();
     let function = move |arg: &String| -> DataFrame {
         split_dataframe(&separator, col_count, &arg)
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_split_dataframe_alt(separator: Option<&str>, col_count: usize) -> TransformationAlt<AllDomainAlt<String>, MapDomainAlt<AllDomainAlt<Data>>> {
-    let separator = separator.unwrap_or(",").to_owned();
-    let input_domain = AllDomainAlt::new();
-    let output_domain = create_dataframe_domain_alt();
-    let function = move |arg: &String| -> DataFrame {
-        split_dataframe(&separator, col_count, &arg)
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn replace_col(key: &str, df: &DataFrame, col: &Data) -> DataFrame {
@@ -224,67 +154,28 @@ fn parse_column<T>(key: &str, impute: bool, df: &DataFrame) -> DataFrame where
     replace_col(key, &df, &col.into())
 }
 
-pub fn make_parse_column<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &str, impute: bool) -> Transformation<DataFrame, DataFrame> where
+pub fn make_parse_column<T>(key: &str, impute: bool) -> Transformation<MapDomain<AllDomain<Data>>, MapDomain<AllDomain<Data>>> where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let key = key.to_owned();
-    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_parse_column()");
-    // TODO: Assert rest of input_domain is valid.
-    let input_domain = input_domain.clone();
-    let make_element_domain = |k: &String, v: &Box<dyn Domain<Carrier=Data>>| -> Box<dyn Domain<Carrier=Data>> {
-        if k == &key {
-            Box::new(DataDomain::<Vec<T>>::new(VectorDomain::<T>::new_all()))
-        } else {
-            v.box_clone()
-        }
-    };
-    let output_element_domains = input_domain.element_domains.iter().map(|(k, v)| (k.clone(), make_element_domain(k, v))).collect();
-    let output_domain = HeterogeneousMapDomain::new(output_element_domains);
+    let input_domain = create_dataframe_domain();
+    let output_domain = create_dataframe_domain();
     let function = move |arg: &DataFrame| -> DataFrame {
         parse_column::<T>(&key, impute, arg)
     };
     Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_parse_column_alt<T>(key: &str, impute: bool) -> TransformationAlt<MapDomainAlt<AllDomainAlt<Data>>, MapDomainAlt<AllDomainAlt<Data>>> where
-    T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-    let key = key.to_owned();
-    let input_domain = create_dataframe_domain_alt();
-    let output_domain = create_dataframe_domain_alt();
-    let function = move |arg: &DataFrame| -> DataFrame {
-        parse_column::<T>(&key, impute, arg)
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
-}
-
-pub fn make_select_column<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &str) -> Transformation<DataFrame, Vec<T>> where
+pub fn make_select_column<T>(key: &str) -> Transformation<MapDomain<AllDomain<Data>>, VectorDomain<AllDomain<T>>> where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
-    let input_domain = input_domain.as_any().downcast_ref::<HeterogeneousMapDomain>().expect("Bogus input_domain in make_select_column()");
-    let column_domain = input_domain.element_domains.get(&key).expect("Bogus input_domain in make_select_column()");
-    let column_domain = column_domain.as_any().downcast_ref::<DataDomain<Vec<T>>>().expect("Bogus input_domain in make_select_column()");
-    // It's a drag that we need a type argument to get column_domain out. Might want to change Transformation::new() to take Box<dyn Domain> instead of impl Domain.
-    let column_domain = column_domain.form_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_select_column()");
-    let input_domain = input_domain.clone();
-    let output_domain = column_domain.clone();
+    let input_domain = create_dataframe_domain();
+    let output_domain = VectorDomain::new_all();
     let function = move |arg: &DataFrame| -> Vec<T> {
         let ret = arg.get(&key).expect("Missing dataframe column");
         let ret: &Vec<T> = ret.as_form();
         ret.clone()
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_select_column_alt<T>(key: &str) -> TransformationAlt<MapDomainAlt<AllDomainAlt<Data>>, VectorDomainAlt<AllDomainAlt<T>>> where
-    T: 'static + Element + Clone + PartialEq {
-    let key = key.to_owned();
-    let input_domain = create_dataframe_domain_alt();
-    let output_domain = VectorDomainAlt::new_all();
-    let function = move |arg: &DataFrame| -> Vec<T> {
-        let ret = arg.get(&key).expect("Missing dataframe column");
-        let ret: &Vec<T> = ret.as_form();
-        ret.clone()
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
@@ -294,53 +185,26 @@ fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
     x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
 }
 
-pub fn make_clamp<T>(input_domain: &dyn Domain<Carrier=Vec<T>>, lower: T, upper: T) -> Transformation<Vec<T>, Vec<T>> where
-    T: 'static + Element + Copy + PartialEq + PartialOrd {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_clamp()");
-    let input_domain = input_domain.clone();
-    let output_domain = VectorDomain::<T>::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
-    let function = move |arg: &Vec<T>| -> Vec<T> {
-        clamp(lower, upper, arg)
-    };
-    Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_clamp_alt<T>(lower: T, upper: T) -> TransformationAlt<VectorDomainAlt<AllDomainAlt<T>>, VectorDomainAlt<IntervalDomainAlt<T>>> where
+pub fn make_clamp<T>(lower: T, upper: T) -> Transformation<VectorDomain<AllDomain<T>>, VectorDomain<IntervalDomain<T>>> where
     T: 'static + Copy + PartialOrd {
-    let input_domain = VectorDomainAlt::new_all();
-    let output_domain = VectorDomainAlt::new(IntervalDomainAlt::new(Bound::Included(lower), Bound::Included(upper)));
+    let input_domain = VectorDomain::new_all();
+    let output_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
     let function = move |arg: &Vec<T>| -> Vec<T> {
         clamp(lower, upper, arg)
     };
-    TransformationAlt::new(input_domain, output_domain, function)
+    Transformation::new(input_domain, output_domain, function)
 }
 
-pub fn make_bounded_sum<T>(input_domain: &dyn Domain<Carrier=Vec<T>>) -> Transformation<Vec<T>, T> where
-    T: 'static + Element + Clone + PartialEq + Sum<T> {
-    let input_domain = input_domain.as_any().downcast_ref::<VectorDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
-    let element_domain = &input_domain.element_domain;
-    let _element_domain = element_domain.as_any().downcast_ref::<IntervalDomain<T>>().expect("Bogus input_domain in make_bounded_sum()");
-    // TODO: Configure stability from bounds of element_domain.
-    let input_domain = input_domain.clone();
-    let output_domain = AllDomain::<T>::new();
+pub fn make_bounded_sum<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>> where
+    T: 'static + Clone + PartialOrd + Sum<T> {
+    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+    let output_domain = AllDomain::new();
     let function = |arg: &Vec<T>| -> T {
         // FIXME: Can't make this work with references, have to clone.
         let arg = arg.clone();
         arg.into_iter().sum()
     };
     Transformation::new(input_domain, output_domain, function)
-}
-
-pub fn make_bounded_sum_alt<T>(lower: T, upper: T) -> TransformationAlt<VectorDomainAlt<IntervalDomainAlt<T>>, AllDomainAlt<T>> where
-    T: 'static + Clone + PartialOrd + Sum<T> {
-    let input_domain = VectorDomainAlt::new(IntervalDomainAlt::new(Bound::Included(lower), Bound::Included(upper)));
-    let output_domain = AllDomainAlt::new();
-    let function = |arg: &Vec<T>| -> T {
-        // FIXME: Can't make this work with references, have to clone.
-        let arg = arg.clone();
-        arg.into_iter().sum()
-    };
-    TransformationAlt::new(input_domain, output_domain, function)
 }
 
 fn laplace(sigma: f64) -> f64 {
@@ -360,11 +224,10 @@ impl AddNoise for f32 { fn add_noise(self, noise: f64) -> Self { (self as f64 + 
 impl AddNoise for f64 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 impl AddNoise for u8 { fn add_noise(self, noise: f64) -> Self { (self as f64 + noise) as Self } }
 
-pub fn make_base_laplace<T>(input_domain: &dyn Domain<Carrier=T>, sigma: f64) -> Measurement<T, T> where
-    T: 'static + Element + Copy + PartialEq + AddNoise {
-    let input_domain = input_domain.as_any().downcast_ref::<AllDomain<T>>().expect("Bogus input_domain in make_base_laplace()");
-    let input_domain = input_domain.clone();
-    let output_domain = AllDomain::<T>::new();
+pub fn make_base_laplace<T>(sigma: f64) -> Measurement<AllDomain<T>, AllDomain<T>> where
+    T: Copy + AddNoise {
+    let input_domain = AllDomain::new();
+    let output_domain = AllDomain::new();
     let function = move |arg: &T| -> T {
         let noise = laplace(sigma);
         arg.add_noise(noise)
@@ -372,22 +235,11 @@ pub fn make_base_laplace<T>(input_domain: &dyn Domain<Carrier=T>, sigma: f64) ->
     Measurement::new(input_domain, output_domain, function)
 }
 
-pub fn make_base_laplace_alt<T>(sigma: f64) -> MeasurementAlt<AllDomainAlt<T>, AllDomainAlt<T>> where
-    T: Copy + AddNoise {
-    let input_domain = AllDomainAlt::new();
-    let output_domain = AllDomainAlt::new();
-    let function = move |arg: &T| -> T {
-        let noise = laplace(sigma);
-        arg.add_noise(noise)
-    };
-    MeasurementAlt::new(input_domain, output_domain, function)
-}
-
 
 mod ffi {
     use std::os::raw::{c_char, c_uint, c_void};
 
-    use crate::core::ffi::{FfiMeasurement, FfiTransformation, FfiTransformationAlt, FfiMeasurementAlt};
+    use crate::core::ffi::{FfiMeasurement, FfiTransformation};
     use crate::ffi_utils;
     use crate::ffi_utils::c_bool;
     use crate::mono::TypeArgs;
@@ -398,17 +250,7 @@ mod ffi {
     pub extern "C" fn opendp_ops__make_identity(type_args: *const c_char) -> *mut FfiTransformation {
         fn monomorphize<T: 'static + Form + Clone>() -> *mut FfiTransformation {
             let transformation = make_identity::<T>();
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_identity_alt(type_args: *const c_char) -> *mut FfiTransformationAlt {
-        fn monomorphize<T: 'static + Form + Clone>() -> *mut FfiTransformationAlt {
-            let transformation = make_identity_alt::<T>();
-            FfiTransformationAlt::new_from_types(transformation)
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
@@ -417,33 +259,15 @@ mod ffi {
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_split_lines() -> *mut FfiTransformation {
         let transformation = make_split_lines();
-        FfiTransformation::new(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_lines_alt() -> *mut FfiTransformationAlt {
-        let transformation = make_split_lines_alt();
-        FfiTransformationAlt::new_from_types(transformation)
+        FfiTransformation::new_from_types(transformation)
     }
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_parse_series(type_args: *const c_char, impute: c_bool) -> *mut FfiTransformation {
         fn monomorphize<T>(impute: bool) -> *mut FfiTransformation where
-            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_series::<T>(impute);
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (impute))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_series_alt(type_args: *const c_char, impute: c_bool) -> *mut FfiTransformationAlt {
-        fn monomorphize<T>(impute: bool) -> *mut FfiTransformationAlt where
             T: 'static + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_series_alt::<T>(impute);
-            FfiTransformationAlt::new_from_types(transformation)
+            let transformation = make_parse_series::<T>(impute);
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let impute = ffi_utils::to_bool(impute);
@@ -454,28 +278,14 @@ mod ffi {
     pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut FfiTransformation {
         let separator = ffi_utils::to_option_str(separator);
         let transformation = make_split_records(separator);
-        FfiTransformation::new(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_records_alt(separator: *const c_char) -> *mut FfiTransformationAlt {
-        let separator = ffi_utils::to_option_str(separator);
-        let transformation = make_split_records_alt(separator);
-        FfiTransformationAlt::new_from_types(transformation)
+        FfiTransformation::new_from_types(transformation)
     }
 
     #[no_mangle]
     pub extern "C" fn opendp_ops__make_create_dataframe(col_count: c_uint) -> *mut FfiTransformation {
         let col_count = col_count as usize;
         let transformation = make_create_dataframe(col_count);
-        FfiTransformation::new(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_create_dataframe_alt(col_count: c_uint) -> *mut FfiTransformationAlt {
-        let col_count = col_count as usize;
-        let transformation = make_create_dataframe_alt(col_count);
-        FfiTransformationAlt::new_from_types(transformation)
+        FfiTransformation::new_from_types(transformation)
     }
 
     #[no_mangle]
@@ -483,39 +293,15 @@ mod ffi {
         let separator = ffi_utils::to_option_str(separator);
         let col_count = col_count as usize;
         let transformation = make_split_dataframe(separator, col_count);
-        FfiTransformation::new(transformation)
+        FfiTransformation::new_from_types(transformation)
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_dataframe_alt(separator: *const c_char, col_count: c_uint) -> *mut FfiTransformationAlt {
-        let separator = ffi_utils::to_option_str(separator);
-        let col_count = col_count as usize;
-        let transformation = make_split_dataframe_alt(separator, col_count);
-        FfiTransformationAlt::new_from_types(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &str, impute: bool) -> *mut FfiTransformation where
+    pub extern "C" fn opendp_ops__make_parse_column(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
+        fn monomorphize<T>(key: &str, impute: bool) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_column::<T>(input_domain, key, impute);
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let input_transformation = ffi_utils::as_ref(input_transformation);
-        let input_transformation: &Transformation<(), DataFrame> = input_transformation.as_ref();
-        let input_domain = input_transformation.output_domain.as_ref();
-        let key = ffi_utils::to_str(key);
-        let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key, impute))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, key: *const c_char, impute: c_bool) -> *mut FfiTransformationAlt {
-        fn monomorphize<T>(key: &str, impute: bool) -> *mut FfiTransformationAlt where
-            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_column_alt::<T>(key, impute);
-            FfiTransformationAlt::new_from_types(transformation)
+            let transformation = make_parse_column::<T>(key, impute);
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let key = ffi_utils::to_str(key);
@@ -524,26 +310,11 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column(type_args: *const c_char, input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_domain: &dyn Domain<Carrier=DataFrame>, key: &str) -> *mut FfiTransformation where
+    pub extern "C" fn opendp_ops__make_select_column(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformation {
+        fn monomorphize<T>(key: &str) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq {
-            let transformation = make_select_column::<T>(input_domain, key);
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let input_transformation = ffi_utils::as_ref(input_transformation);
-        let input_transformation: &Transformation<(), DataFrame> = input_transformation.as_ref();
-        let input_domain = input_transformation.output_domain.as_ref();
-        let key = ffi_utils::to_str(key);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (input_domain, key))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column_alt(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformationAlt {
-        fn monomorphize<T>(key: &str) -> *mut FfiTransformationAlt where
-            T: 'static + Element + Clone + PartialEq {
-            let transformation = make_select_column_alt::<T>(key);
-            FfiTransformationAlt::new_from_types(transformation)
+            let transformation = make_select_column::<T>(key);
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         let key = ffi_utils::to_str(key);
@@ -551,81 +322,37 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp(type_args: *const c_char, input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_transformation: &FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
-            T: 'static + Element + Copy + PartialEq + PartialOrd {
-            let input_transformation: &Transformation<(), Vec<T>> = input_transformation.as_ref();
-            let input_domain = input_transformation.output_domain.as_ref();
-            let lower = ffi_utils::as_ref(lower as *const T).clone();
-            let upper = ffi_utils::as_ref(upper as *const T).clone();
-            let transformation = make_clamp::<T>(input_domain, lower, upper);
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let input_transformation = ffi_utils::as_ref(input_transformation);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation, lower, upper))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
-        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt where
+    pub extern "C" fn opendp_ops__make_clamp(type_args: *const c_char, _input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
             T: 'static + Copy + PartialOrd {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
             let upper = ffi_utils::as_ref(upper as *const T).clone();
-            let transformation = make_clamp_alt::<T>(lower, upper);
-            FfiTransformationAlt::new_from_types(transformation)
+            let transformation = make_clamp::<T>(lower, upper);
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, input_transformation: *const FfiTransformation, _lower: *const c_void, _upper: *const c_void) -> *mut FfiTransformation {
-        fn monomorphize<T>(input_transformation: &FfiTransformation) -> *mut FfiTransformation where
-            T: 'static + Element + Clone + PartialEq + Sum {
-            let input_transformation: &Transformation<(), Vec<T>> = input_transformation.as_ref();
-            let input_domain = input_transformation.output_domain.as_ref();
-            let transformation = make_bounded_sum::<T>(input_domain);
-            FfiTransformation::new(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let input_transformation = ffi_utils::as_ref(input_transformation);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt {
-        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformationAlt where
+    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, _input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
             T: 'static + Clone + PartialOrd + Sum {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
             let upper = ffi_utils::as_ref(upper as *const T).clone();
-            let transformation = make_bounded_sum_alt::<T>(lower, upper);
-            FfiTransformationAlt::new_from_types(transformation)
+            let transformation = make_bounded_sum::<T>(lower, upper);
+            FfiTransformation::new_from_types(transformation)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace(type_args: *const c_char, input_transformation: *const FfiTransformation, sigma: f64) -> *mut FfiMeasurement {
-        fn monomorphize<T>(input_transformation: &FfiTransformation, sigma: f64) -> *mut FfiMeasurement where
-            T: 'static + Element + Copy + PartialEq + AddNoise {
-            let input_transformation: &Transformation<(), T> = input_transformation.as_ref();
-            let input_domain = input_transformation.output_domain.as_ref();
-            let measurement = make_base_laplace::<T>(input_domain, sigma);
-            FfiMeasurement::new(measurement)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let input_transformation = ffi_utils::as_ref(input_transformation);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (input_transformation, sigma))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace_alt(type_args: *const c_char, _input_transformation: *const FfiTransformationAlt, sigma: f64) -> *mut FfiMeasurementAlt {
-        fn monomorphize<T>(sigma: f64) -> *mut FfiMeasurementAlt where
+    pub extern "C" fn opendp_ops__make_base_laplace(type_args: *const c_char, _input_transformation: *const FfiTransformation, sigma: f64) -> *mut FfiMeasurement {
+        fn monomorphize<T>(sigma: f64) -> *mut FfiMeasurement where
             T: 'static + Copy + PartialEq + AddNoise {
-            let measurement = make_base_laplace_alt::<T>(sigma);
-            FfiMeasurementAlt::new_from_types(measurement)
+            let measurement = make_base_laplace::<T>(sigma);
+            FfiMeasurement::new_from_types(measurement)
         }
         let type_args = TypeArgs::expect(type_args, 1);
         dispatch!(monomorphize, [(type_args.0[0], @numbers)], (sigma))
@@ -657,21 +384,12 @@ r#"{
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{make_chain_tt, make_chain_tt_alt};
-
     use super::*;
+    use crate::core::make_chain_tt;
 
     #[test]
     fn test_identity() {
         let identity = make_identity();
-        let arg = 99;
-        let ret = identity.invoke(&arg);
-        assert_eq!(ret, 99);
-    }
-
-    #[test]
-    fn test_identity_alt() {
-        let identity = make_identity_alt();
         let arg = 99;
         let ret = identity.function.eval(&arg);
         assert_eq!(ret, 99);
@@ -681,14 +399,6 @@ mod tests {
     fn test_make_split_lines() {
         let transformation = make_split_lines();
         let arg = "ant\nbat\ncat\n".to_owned();
-        let ret = transformation.invoke(&arg);
-        assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
-    }
-
-    #[test]
-    fn test_make_split_lines_alt() {
-        let transformation = make_split_lines_alt();
-        let arg = "ant\nbat\ncat\n".to_owned();
         let ret = transformation.function.eval(&arg);
         assert_eq!(ret, vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()]);
     }
@@ -696,15 +406,6 @@ mod tests {
     #[test]
     fn test_make_parse_series() {
         let transformation = make_parse_series::<i32>(true);
-        let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
-        let ret = transformation.invoke(&arg);
-        let expected = vec![1, 2, 3, 0];
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_parse_series_alt() {
-        let transformation = make_parse_series_alt::<i32>(true);
         let arg = vec!["1".to_owned(), "2".to_owned(), "3".to_owned(), "foo".to_owned()];
         let ret = transformation.function.eval(&arg);
         let expected = vec![1, 2, 3, 0];
@@ -714,18 +415,6 @@ mod tests {
     #[test]
     fn test_make_split_records() {
         let transformation = make_split_records(None);
-        let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
-        let ret = transformation.invoke(&arg);
-        assert_eq!(ret, vec![
-            vec!["ant".to_owned(), "foo".to_owned()],
-            vec!["bat".to_owned(), "bar".to_owned()],
-            vec!["cat".to_owned(), "baz".to_owned()],
-        ]);
-    }
-
-    #[test]
-    fn test_make_split_records_alt() {
-        let transformation = make_split_records_alt(None);
         let arg = vec!["ant, foo".to_owned(), "bat, bar".to_owned(), "cat, baz".to_owned()];
         let ret = transformation.function.eval(&arg);
         assert_eq!(ret, vec![
@@ -743,22 +432,6 @@ mod tests {
             vec!["bat".to_owned(), "bar".to_owned()],
             vec!["cat".to_owned(), "baz".to_owned()],
         ];
-        let ret = transformation.invoke(&arg);
-        let expected: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
-        ].into_iter().collect();
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_create_dataframe_alt() {
-        let transformation = make_create_dataframe_alt(2);
-        let arg = vec![
-            vec!["ant".to_owned(), "foo".to_owned()],
-            vec!["bat".to_owned(), "bar".to_owned()],
-            vec!["cat".to_owned(), "baz".to_owned()],
-        ];
         let ret = transformation.function.eval(&arg);
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -771,18 +444,6 @@ mod tests {
     fn test_make_split_dataframe() {
         let transformation = make_split_dataframe(None, 2);
         let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
-        let ret = transformation.invoke(&arg);
-        let expected: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
-        ].into_iter().collect();
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_split_dataframe_alt() {
-        let transformation = make_split_dataframe_alt(None, 2);
-        let arg = "ant, foo\nbat, bar\ncat, baz".to_owned();
         let ret = transformation.function.eval(&arg);
         let expected: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
@@ -793,23 +454,7 @@ mod tests {
 
     #[test]
     fn test_make_parse_column() {
-        let input_domain = create_raw_dataframe_domain(2);
-        let transformation = make_parse_column::<i32>(&input_domain, "1", true);
-        let arg: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
-        ].into_iter().collect();
-        let ret = transformation.invoke(&arg);
-        let expected: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec![1, 2, 0])),
-        ].into_iter().collect();
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_parse_column_alt() {
-        let transformation = make_parse_column_alt::<i32>("1", true);
+        let transformation = make_parse_column::<i32>("1", true);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "".to_owned()])),
@@ -824,29 +469,9 @@ mod tests {
 
     #[test]
     fn test_make_parse_columns() {
-        let input_domain = create_raw_dataframe_domain(3);
-        let transformation0 = make_parse_column::<i32>(&input_domain, "1", true);
-        let transformation1 = make_parse_column::<f64>(transformation0.output_domain.as_ref(), "2", true);
+        let transformation0 = make_parse_column::<i32>("1", true);
+        let transformation1 = make_parse_column::<f64>("2", true);
         let transformation = make_chain_tt(&transformation1, &transformation0);
-        let arg: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
-            ("2".to_owned(), Data::new(vec!["1.1".to_owned(), "2.2".to_owned(), "3.3".to_owned()])),
-        ].into_iter().collect();
-        let ret = transformation.invoke(&arg);
-        let expected: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec![1, 2, 3])),
-            ("2".to_owned(), Data::new(vec![1.1, 2.2, 3.3])),
-        ].into_iter().collect();
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_parse_columns_alt() {
-        let transformation0 = make_parse_column_alt::<i32>("1", true);
-        let transformation1 = make_parse_column_alt::<f64>("2", true);
-        let transformation = make_chain_tt_alt(&transformation1, &transformation0);
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])),
@@ -863,20 +488,7 @@ mod tests {
 
     #[test]
     fn test_make_select_column() {
-        let input_domain = create_raw_dataframe_domain(2);
-        let transformation = make_select_column::<String>(&input_domain, "1");
-        let arg: DataFrame = vec![
-            ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
-            ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
-        ].into_iter().collect();
-        let ret = transformation.invoke(&arg);
-        let expected = vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()];
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_select_column_alt() {
-        let transformation = make_select_column_alt::<String>("1");
+        let transformation = make_select_column::<String>("1");
         let arg: DataFrame = vec![
             ("0".to_owned(), Data::new(vec!["ant".to_owned(), "bat".to_owned(), "cat".to_owned()])),
             ("1".to_owned(), Data::new(vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()])),
@@ -888,17 +500,7 @@ mod tests {
 
     #[test]
     fn test_make_clamp() {
-        let input_domain = VectorDomain::<i32>::new_all();
-        let transformation = make_clamp(&input_domain, 0, 10);
-        let arg = vec![-10, -5, 0, 5, 10, 20];
-        let ret = transformation.invoke(&arg);
-        let expected = vec![0, 0, 0, 5, 10, 10];
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_clamp_alt() {
-        let transformation = make_clamp_alt(0, 10);
+        let transformation = make_clamp(0, 10);
         let arg = vec![-10, -5, 0, 5, 10, 20];
         let ret = transformation.function.eval(&arg);
         let expected = vec![0, 0, 0, 5, 10, 10];
@@ -907,17 +509,7 @@ mod tests {
 
     #[test]
     fn test_make_bounded_sum() {
-        let input_domain = VectorDomain::<i32>::new(IntervalDomain::<i32>::new(Bound::Included(0), Bound::Included(10)));
-        let transformation = make_bounded_sum::<i32>(&input_domain);
-        let arg = vec![1, 2, 3, 4, 5];
-        let ret = transformation.invoke(&arg);
-        let expected = 15;
-        assert_eq!(ret, expected);
-    }
-
-    #[test]
-    fn test_make_bounded_sum_alt() {
-        let transformation = make_bounded_sum_alt::<i32>(0, 10);
+        let transformation = make_bounded_sum::<i32>(0, 10);
         let arg = vec![1, 2, 3, 4, 5];
         let ret = transformation.function.eval(&arg);
         let expected = 15;
@@ -926,16 +518,7 @@ mod tests {
 
     #[test]
     fn test_make_base_laplace() {
-        let input_domain = AllDomain::<f64>::new();
-        let measurement = make_base_laplace::<f64>(&input_domain, 1.0);
-        let arg = 0.0;
-        let _ret = measurement.invoke(&arg);
-        // TODO: Test for base_laplace
-    }
-
-    #[test]
-    fn test_make_base_laplace_alt() {
-        let measurement = make_base_laplace_alt::<f64>(1.0);
+        let measurement = make_base_laplace::<f64>(1.0);
         let arg = 0.0;
         let _ret = measurement.function.eval(&arg);
         // TODO: Test for base_laplace
