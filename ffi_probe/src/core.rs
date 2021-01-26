@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
-use crate::core::dummy::{dummy_relation, DummyDomain, DummyMeasure, DummyMetric};
+use crate::core::dummy::{dummy_relation, DummyMeasure, DummyMetric};
 use crate::core::ffi::FfiGlue;
 use crate::ffi_utils;
+use crate::dom::{PairDomain, BoxDomain};
 
 // BUILDING BLOCKS
 pub trait Domain: Clone {
@@ -12,13 +13,13 @@ pub trait Domain: Clone {
 }
 
 #[derive(Clone)]
-pub struct Function<I, O> {
-    function: Rc<dyn Fn(*const I) -> Box<O>>
+pub struct Function<ID: Domain, OD: Domain> {
+    function: Rc<dyn Fn(*const ID::Carrier) -> Box<OD::Carrier>>
 }
 
-impl<I, O> Function<I, O> {
-    pub fn new(function: impl Fn(&I) -> O + 'static) -> Self {
-        let function = move |arg: *const I| -> Box<O> {
+impl<ID: Domain, OD: Domain> Function<ID, OD> {
+    pub fn new(function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
+        let function = move |arg: *const ID::Carrier| -> Box<OD::Carrier> {
             let arg = ffi_utils::as_ref(arg);
             let res = function(arg);
             Box::new(res)
@@ -27,23 +28,23 @@ impl<I, O> Function<I, O> {
         Function { function }
     }
 
-    pub fn eval(&self, arg: &I) -> O {
-        let arg = arg as *const I;
+    pub fn eval(&self, arg: &ID::Carrier) -> OD::Carrier {
+        let arg = arg as *const ID::Carrier;
         let res = (self.function)(arg);
         *res
     }
 
-    pub fn eval_ffi(&self, arg: &Box<I>) -> Box<O> {
-        let arg = arg.as_ref() as *const I;
+    pub fn eval_ffi(&self, arg: &Box<ID::Carrier>) -> Box<OD::Carrier> {
+        let arg = arg.as_ref() as *const ID::Carrier;
         (self.function)(arg)
     }
 }
 
-impl<I: 'static, O: 'static> Function<I, O> {
-    pub fn make_chain<X: 'static>(function1: &Function<X, O>, function0: &Function<I, X>) -> Function<I, O> {
+impl<ID: 'static + Domain, OD: 'static + Domain> Function<ID, OD> {
+    pub fn make_chain<XD: 'static + Domain>(function1: &Function<XD, OD>, function0: &Function<ID, XD>) -> Function<ID, OD> {
         let function0 = function0.function.clone();
         let function1 = function1.function.clone();
-        let function = move |arg: *const I| -> Box<O> {
+        let function = move |arg: *const ID::Carrier| -> Box<OD::Carrier> {
             let res0 = function0(arg);
             function1(&*res0)
         };
@@ -52,11 +53,11 @@ impl<I: 'static, O: 'static> Function<I, O> {
     }
 }
 
-impl<I: 'static, OA: 'static, OB: 'static> Function<I, (Box<OA>, Box<OB>)> {
-    pub fn make_composition(function0: &Function<I, OA>, function1: &Function<I, OB>) -> Function<I, (Box<OA>, Box<OB>)> {
+impl<ID: 'static + Domain, ODA: 'static + Domain, ODB: 'static + Domain> Function<ID, PairDomain<BoxDomain<ODA>, BoxDomain<ODB>>> {
+    pub fn make_composition(function0: &Function<ID, ODA>, function1: &Function<ID, ODB>) -> Self {
         let function0 = function0.function.clone();
         let function1 = function1.function.clone();
-        let function = move |arg: *const I| -> Box<(Box<OA>, Box<OB>)> {
+        let function = move |arg: *const ID::Carrier| -> Box<(Box<ODA::Carrier>, Box<ODB::Carrier>)> {
             let res0 = function0(arg);
             let res1 = function1(arg);
             Box::new((res0, res1))
@@ -103,7 +104,7 @@ impl<I, O> Relation<I, O> {
 pub struct Measurement<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM: Measure=DummyMeasure<()>> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
-    pub function: Function<ID::Carrier, OD::Carrier>,
+    pub function: Function<ID, OD>,
     pub input_metric: IM,
     pub output_measure: OM,
     pub privacy_relation: Relation<IM::Distance, OM::Distance>,
@@ -123,7 +124,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Measure> Measurement<ID, OD, IM, OM
     pub fn new_all(
         input_domain: ID,
         output_domain: OD,
-        function: Function<ID::Carrier, OD::Carrier>,
+        function: Function<ID, OD>,
         input_metric: IM,
         output_measure: OM,
         privacy_relation: Relation<IM::Distance, OM::Distance>,
@@ -137,7 +138,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Measure> Measurement<ID, OD, IM, OM
 pub struct Transformation<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM: Metric=DummyMetric<()>> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
-    pub function: Function<ID::Carrier, OD::Carrier>,
+    pub function: Function<ID, OD>,
     pub input_metric: IM,
     pub output_metric: OM,
     pub stability_relation: Relation<IM::Distance, OM::Distance>,
@@ -157,7 +158,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Metric> Transformation<ID, OD, IM, 
     pub fn new_all(
         input_domain: ID,
         output_domain: OD,
-        function: Function<ID::Carrier, OD::Carrier>,
+        function: Function<ID, OD>,
         input_metric: IM,
         output_metric: OM,
         stability_relation: Relation<IM::Distance, OM::Distance>,
@@ -210,7 +211,7 @@ fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<X
     Transformation { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
 }
 
-pub fn make_composition<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>) -> Measurement<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
+pub fn make_composition<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>) -> Measurement<ID, PairDomain<BoxDomain<OD0>, BoxDomain<OD1>>, IM, OM> where
     ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: Metric, OM: Measure {
     let input_glue = FfiGlue::<ID>::new_from_type();
     let output_glue0 = FfiGlue::<OD0>::new_from_type();
@@ -218,12 +219,16 @@ pub fn make_composition<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0
     make_composition_core(measurement0, measurement1, &input_glue, &output_glue0, &output_glue1)
 }
 
-fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>, input_glue: &FfiGlue<ID>, _output_glue0: &FfiGlue<OD0>, _output_glue1: &FfiGlue<OD1>) -> Measurement<ID, DummyDomain<(Box<OD0::Carrier>, Box<OD1::Carrier>)>, IM, OM> where
+fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>, input_glue: &FfiGlue<ID>, output_glue0: &FfiGlue<OD0>, output_glue1: &FfiGlue<OD1>) -> Measurement<ID, PairDomain<BoxDomain<OD0>, BoxDomain<OD1>>, IM, OM> where
     ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: Metric, OM: Measure {
     assert!((input_glue.eq)(&measurement0.input_domain, &measurement1.input_domain));
     let input_domain = (input_glue.clone_)(&measurement0.input_domain);
-    // TODO: Figure out output_domain for composition.
-    let output_domain = Box::new(dummy::DummyDomain::new());
+    let output_domain0 = (output_glue0.clone_)(&measurement0.output_domain);
+    let output_domain0 = BoxDomain::new(output_domain0);
+    let output_domain1 = (output_glue1.clone_)(&measurement1.output_domain);
+    let output_domain1 = BoxDomain::new(output_domain1);
+    let output_domain = PairDomain::new(output_domain0, output_domain1);
+    let output_domain = Box::new(output_domain);
     let function = Function::make_composition(&measurement0.function, &measurement1.function);
     // TODO: Figure out input_metric for composition.
     let input_metric = measurement0.input_metric.clone();

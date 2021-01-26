@@ -26,6 +26,27 @@ impl<T> Domain for AllDomain<T> {
 }
 
 
+/// A Domain that carries an underlying Domain in a Box.
+#[derive(Clone)]
+pub struct BoxDomain<D: Domain> {
+    element_domain: Box<D>
+}
+impl<D: Domain> BoxDomain<D> {
+    pub fn new(element_domain: Box<D>) -> Self {
+        BoxDomain { element_domain }
+    }
+}
+impl<D: Domain> Domain for BoxDomain<D> {
+    type Carrier = Box<D::Carrier>;
+    fn check_compatible(&self, other: &Self) -> bool {
+        self.element_domain.check_compatible(&other.element_domain)
+    }
+    fn check_valid(&self, val: &Self::Carrier) -> bool {
+        self.element_domain.check_valid(val.as_ref())
+    }
+}
+
+
 /// A Domain that unwraps a Data wrapper.
 pub struct DataDomain<D: Domain> {
     pub form_domain: D,
