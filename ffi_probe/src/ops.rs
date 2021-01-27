@@ -242,7 +242,7 @@ mod ffi {
     use crate::core::ffi::{FfiMeasurement, FfiTransformation};
     use crate::ffi_utils;
     use crate::ffi_utils::c_bool;
-    use crate::mono::TypeArgs;
+    use crate::ffi_utils::TypeArgs;
 
     use super::*;
 

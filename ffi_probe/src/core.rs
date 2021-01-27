@@ -268,7 +268,7 @@ pub(crate) mod ffi {
     use std::os::raw::c_char;
 
     use crate::ffi_utils;
-    use crate::mono::Type;
+    use crate::ffi_utils::Type;
 
     use super::*;
 

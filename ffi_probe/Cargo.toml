@@ -12,3 +12,4 @@ rand = "0.7.3"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
+doctest = false
