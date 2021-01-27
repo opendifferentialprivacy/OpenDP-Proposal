@@ -5,10 +5,9 @@ use crate::dom::{BoxDomain, PairDomain};
 use crate::ffi_utils;
 
 // BUILDING BLOCKS
-pub trait Domain: Clone {
+pub trait Domain: Clone + PartialEq {
     type Carrier;
-    fn check_compatible(&self, other: &Self) -> bool;
-    fn check_valid(&self, val: &Self::Carrier) -> bool;
+    fn member(&self, val: &Self::Carrier) -> bool;
 }
 
 #[derive(Clone)]
@@ -305,17 +304,11 @@ pub(crate) mod ffi {
         pub fn new_from_type() -> Self {
             let domain_type = Type::new::<D>();
             let domain_carrier = Type::new::<D::Carrier>();
-            let domain_eq = |d0: &Box<D>, d1: &Box<D>| {
-                d0.check_compatible(&d1)
-            };
+            let domain_eq = |d0: &Box<D>, d1: &Box<D>| d0 == d1;
             let domain_eq = Rc::new(domain_eq);
-            let domain_clone = |d: &Box<D>| {
-                d.clone()
-            };
+            let domain_clone = |d: &Box<D>| d.clone();
             let domain_clone = Rc::new(domain_clone);
-            let metric_clone = |d: &Box<M>| {
-                d.clone()
-            };
+            let metric_clone = |m: &Box<M>| m.clone();
             let metric_clone = Rc::new(metric_clone);
             Self::new(domain_type, domain_carrier, domain_eq, domain_clone, metric_clone)
         }
@@ -336,17 +329,11 @@ pub(crate) mod ffi {
         pub fn new_from_type() -> Self {
             let domain_type = Type::new::<D>();
             let domain_carrier = Type::new::<D::Carrier>();
-            let domain_eq = |d0: &Box<D>, d1: &Box<D>| {
-                d0.check_compatible(&d1)
-            };
+            let domain_eq = |d0: &Box<D>, d1: &Box<D>| d0 == d1;
             let domain_eq = Rc::new(domain_eq);
-            let domain_clone = |d: &Box<D>| {
-                d.clone()
-            };
+            let domain_clone = |d: &Box<D>| d.clone();
             let domain_clone = Rc::new(domain_clone);
-            let measure_clone = |d: &Box<M>| {
-                d.clone()
-            };
+            let measure_clone = |m: &Box<M>| m.clone();
             let measure_clone = Rc::new(measure_clone);
             Self::new(domain_type, domain_carrier, domain_eq, domain_clone, measure_clone)
         }
@@ -355,12 +342,11 @@ pub(crate) mod ffi {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, PartialEq)]
     pub struct FfiDomain;
     impl Domain for FfiDomain {
         type Carrier = ();
-        fn check_compatible(&self, _other: &Self) -> bool { unimplemented!() }
-        fn check_valid(&self, _val: &Self::Carrier) -> bool { unimplemented!() }
+        fn member(&self, _val: &Self::Carrier) -> bool { unimplemented!() }
     }
 
     #[derive(Clone)]
