@@ -297,7 +297,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
+    pub extern "C" fn opendp_ops__make_parse_column(type_args: *const c_char, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
         fn monomorphize<T>(key: &str, impute: bool) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
             let transformation = make_parse_column::<T>(key, impute);
@@ -310,7 +310,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column(type_args: *const c_char, _input_transformation: *const FfiTransformation, key: *const c_char) -> *mut FfiTransformation {
+    pub extern "C" fn opendp_ops__make_select_column(type_args: *const c_char, key: *const c_char) -> *mut FfiTransformation {
         fn monomorphize<T>(key: &str) -> *mut FfiTransformation where
             T: 'static + Element + Clone + PartialEq {
             let transformation = make_select_column::<T>(key);
@@ -322,7 +322,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp(type_args: *const c_char, _input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+    pub extern "C" fn opendp_ops__make_clamp(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
         fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
             T: 'static + Copy + PartialOrd {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
@@ -335,7 +335,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, _input_transformation: *const FfiTransformation, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
         fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
             T: 'static + Clone + PartialOrd + Sum {
             let lower = ffi_utils::as_ref(lower as *const T).clone();
@@ -348,7 +348,7 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace(type_args: *const c_char, _input_transformation: *const FfiTransformation, sigma: f64) -> *mut FfiMeasurement {
+    pub extern "C" fn opendp_ops__make_base_laplace(type_args: *const c_char, sigma: f64) -> *mut FfiMeasurement {
         fn monomorphize<T>(sigma: f64) -> *mut FfiMeasurement where
             T: 'static + Copy + PartialEq + AddNoise {
             let measurement = make_base_laplace::<T>(sigma);
@@ -369,11 +369,11 @@ r#"{
         { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
         { "name": "make_create_dataframe", "args": [ ["unsigned int", "col_count"] ], "ret": "void *" },
         { "name": "make_split_dataframe", "args": [ ["const char *", "separator"], ["unsigned int", "col_count"] ], "ret": "void *" },
-        { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
-        { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["const char *", "key"] ], "ret": "void *" },
-        { "name": "make_clamp", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-        { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-        { "name": "make_base_laplace", "args": [ ["const char *", "selector"], ["const void *", "input_transformation"], ["double", "sigma"] ], "ret": "void *" }
+        { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
+        { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const char *", "key"] ], "ret": "void *" },
+        { "name": "make_clamp", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
+        { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
+        { "name": "make_base_laplace", "args": [ ["const char *", "selector"], ["double", "sigma"] ], "ret": "void *" }
     ]
 }"#;
         ffi_utils::bootstrap(spec)
