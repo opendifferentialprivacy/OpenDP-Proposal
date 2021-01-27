@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
-use crate::core::dummy::{dummy_relation, DummyMeasure, DummyMetric};
+use crate::core::dummy::{DummyMeasure, DummyMetric};
 use crate::core::ffi::FfiGlue;
+use crate::dom::{BoxDomain, PairDomain};
 use crate::ffi_utils;
-use crate::dom::{PairDomain, BoxDomain};
 
 // BUILDING BLOCKS
 pub trait Domain: Clone {
@@ -76,25 +76,48 @@ pub trait Measure: Clone {
 }
 
 #[derive(Clone)]
-pub struct Relation<I, O> {
-    relation: Rc<dyn Fn(*const I, *const O) -> bool>
+pub struct PrivacyRelation<IM: Metric, OM: Measure> {
+    relation: Rc<dyn Fn(*const IM::Distance, *const OM::Distance) -> bool>
 }
-impl<I, O> Relation<I, O> {
-    pub fn new(relation: impl Fn(&I, &O) -> bool + 'static) -> Self {
-        let relation = move |input_distance: *const I, output_distance: *const O| -> bool {
+impl<IM: Metric, OM: Measure> PrivacyRelation<IM, OM> {
+    pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
+        let relation = move |input_distance: *const IM::Distance, output_distance: *const OM::Distance| -> bool {
             let input_distance = ffi_utils::as_ref(input_distance);
             let output_distance = ffi_utils::as_ref(output_distance);
             relation(input_distance, output_distance)
         };
         let relation = Rc::new(relation);
-        Relation { relation }
+        PrivacyRelation { relation }
     }
-    pub fn eval(&self, input_distance: &I, output_distance: &O) -> bool {
-        let input_distance = input_distance as *const I;
-        let output_distance = output_distance as *const O;
+    pub fn eval(&self, input_distance: &IM::Distance, output_distance: &OM::Distance) -> bool {
+        let input_distance = input_distance as *const IM::Distance;
+        let output_distance = output_distance as *const OM::Distance;
         (self.relation)(input_distance, output_distance)
     }
-    pub fn eval_ffi(&self, input_distance: *const I, output_distance: *const O) -> bool {
+    pub fn eval_ffi(&self, input_distance: *const IM::Distance, output_distance: *const OM::Distance) -> bool {
+        (self.relation)(input_distance, output_distance)
+    }
+}
+
+pub struct StabilityRelation<IM: Metric, OM: Metric> {
+    relation: Rc<dyn Fn(*const IM::Distance, *const OM::Distance) -> bool>
+}
+impl<IM: Metric, OM: Metric> StabilityRelation<IM, OM> {
+    pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
+        let relation = move |input_distance: *const IM::Distance, output_distance: *const OM::Distance| -> bool {
+            let input_distance = ffi_utils::as_ref(input_distance);
+            let output_distance = ffi_utils::as_ref(output_distance);
+            relation(input_distance, output_distance)
+        };
+        let relation = Rc::new(relation);
+        StabilityRelation { relation }
+    }
+    pub fn eval(&self, input_distance: &IM::Distance, output_distance: &OM::Distance) -> bool {
+        let input_distance = input_distance as *const IM::Distance;
+        let output_distance = output_distance as *const OM::Distance;
+        (self.relation)(input_distance, output_distance)
+    }
+    pub fn eval_ffi(&self, input_distance: *const IM::Distance, output_distance: *const OM::Distance) -> bool {
         (self.relation)(input_distance, output_distance)
     }
 }
@@ -107,7 +130,7 @@ pub struct Measurement<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM: M
     pub function: Function<ID, OD>,
     pub input_metric: IM,
     pub output_measure: OM,
-    pub privacy_relation: Relation<IM::Distance, OM::Distance>,
+    pub privacy_relation: PrivacyRelation<IM, OM>,
 }
 
 impl<ID: Domain, OD: Domain> Measurement<ID, OD> {
@@ -115,7 +138,7 @@ impl<ID: Domain, OD: Domain> Measurement<ID, OD> {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
         let output_measure = dummy::DummyMeasure::new();
-        let privacy_relation = dummy::dummy_relation();
+        let privacy_relation = dummy::dummy_privacy_relation();
         Self::new_all(input_domain, output_domain, function, input_metric, output_measure, privacy_relation)
     }
 }
@@ -127,7 +150,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Measure> Measurement<ID, OD, IM, OM
         function: Function<ID, OD>,
         input_metric: IM,
         output_measure: OM,
-        privacy_relation: Relation<IM::Distance, OM::Distance>,
+        privacy_relation: PrivacyRelation<IM, OM>,
     ) -> Self {
         let input_domain = Box::new(input_domain);
         let output_domain = Box::new(output_domain);
@@ -141,7 +164,7 @@ pub struct Transformation<ID: Domain, OD: Domain, IM: Metric=DummyMetric<()>, OM
     pub function: Function<ID, OD>,
     pub input_metric: IM,
     pub output_metric: OM,
-    pub stability_relation: Relation<IM::Distance, OM::Distance>,
+    pub stability_relation: StabilityRelation<IM, OM>,
 }
 
 impl<ID: Domain, OD: Domain> Transformation<ID, OD> {
@@ -149,7 +172,7 @@ impl<ID: Domain, OD: Domain> Transformation<ID, OD> {
         let function = Function::new(function);
         let input_metric = dummy::DummyMetric::new();
         let output_metric = dummy::DummyMetric::new();
-        let stability_relation = dummy::dummy_relation();
+        let stability_relation = dummy::dummy_stability_relation();
         Self::new_all(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
     }
 }
@@ -161,7 +184,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Metric> Transformation<ID, OD, IM, 
         function: Function<ID, OD>,
         input_metric: IM,
         output_metric: OM,
-        stability_relation: Relation<IM::Distance, OM::Distance>,
+        stability_relation: StabilityRelation<IM, OM>,
     ) -> Self {
         let input_domain = Box::new(input_domain);
         let output_domain = Box::new(output_domain);
@@ -187,7 +210,7 @@ fn make_chain_mt_core<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD,
     let function = Function::make_chain(&measurement1.function, &transformation0.function);
     let input_metric = transformation0.input_metric.clone();
     let output_measure = measurement1.output_measure.clone();
-    let privacy_relation = dummy_relation();
+    let privacy_relation = dummy::dummy_privacy_relation();
     Measurement { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
@@ -207,7 +230,7 @@ fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<X
     let function = Function::make_chain(&transformation1.function, &transformation0.function);
     let input_metric = transformation0.input_metric.clone();
     let output_metric = transformation1.output_metric.clone();
-    let stability_relation = dummy_relation();
+    let stability_relation = dummy::dummy_stability_relation();
     Transformation { input_domain, output_domain, function, input_metric, output_metric, stability_relation }
 }
 
@@ -234,7 +257,7 @@ fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD
     let input_metric = measurement0.input_metric.clone();
     // TODO: Figure out output_measure for composition.
     let output_measure = measurement0.output_measure.clone();
-    let privacy_relation = dummy_relation();
+    let privacy_relation = dummy::dummy_privacy_relation();
     Measurement { input_domain, output_domain, function, input_metric, output_measure, privacy_relation }
 }
 
@@ -551,7 +574,11 @@ mod dummy {
         type Distance=T;
     }
 
-    pub fn dummy_relation<I, O>() -> Relation<I, O> {
-        Relation::new(|_i, _o| false)
+    pub fn dummy_privacy_relation<IM: Metric, OM: Measure>() -> PrivacyRelation<IM, OM> {
+        PrivacyRelation::new(|_i, _o| false)
+    }
+
+    pub fn dummy_stability_relation<IM: Metric, OM: Metric>() -> StabilityRelation<IM, OM> {
+        StabilityRelation::new(|_i, _o| false)
     }
 }
