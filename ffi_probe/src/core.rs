@@ -2,7 +2,6 @@ use std::rc::Rc;
 
 use crate::core::ffi::{DomainMeasureGlue, DomainMetricGlue};
 use crate::dom::{BoxDomain, PairDomain};
-use crate::ffi_utils;
 
 // BUILDING BLOCKS
 pub trait Domain: Clone + PartialEq {
@@ -12,13 +11,12 @@ pub trait Domain: Clone + PartialEq {
 
 #[derive(Clone)]
 pub struct Function<ID: Domain, OD: Domain> {
-    function: Rc<dyn Fn(*const ID::Carrier) -> Box<OD::Carrier>>
+    function: Rc<dyn Fn(&ID::Carrier) -> Box<OD::Carrier>>
 }
 
 impl<ID: Domain, OD: Domain> Function<ID, OD> {
     pub fn new(function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Self {
-        let function = move |arg: *const ID::Carrier| -> Box<OD::Carrier> {
-            let arg = ffi_utils::as_ref(arg);
+        let function = move |arg: &ID::Carrier| {
             let res = function(arg);
             Box::new(res)
         };
@@ -27,13 +25,10 @@ impl<ID: Domain, OD: Domain> Function<ID, OD> {
     }
 
     pub fn eval(&self, arg: &ID::Carrier) -> OD::Carrier {
-        let arg = arg as *const ID::Carrier;
-        let res = (self.function)(arg);
-        *res
+        *(self.function)(arg)
     }
 
-    pub fn eval_ffi(&self, arg: &Box<ID::Carrier>) -> Box<OD::Carrier> {
-        let arg = arg.as_ref() as *const ID::Carrier;
+    pub fn eval_ffi(&self, arg: &ID::Carrier) -> Box<OD::Carrier> {
         (self.function)(arg)
     }
 }
@@ -42,9 +37,9 @@ impl<ID: 'static + Domain, OD: 'static + Domain> Function<ID, OD> {
     pub fn make_chain<XD: 'static + Domain>(function1: &Function<XD, OD>, function0: &Function<ID, XD>) -> Function<ID, OD> {
         let function0 = function0.function.clone();
         let function1 = function1.function.clone();
-        let function = move |arg: *const ID::Carrier| -> Box<OD::Carrier> {
+        let function = move |arg: &ID::Carrier| {
             let res0 = function0(arg);
-            function1(&*res0)
+            function1(&res0)
         };
         let function = Rc::new(function);
         Function { function }
@@ -55,7 +50,7 @@ impl<ID: 'static + Domain, ODA: 'static + Domain, ODB: 'static + Domain> Functio
     pub fn make_composition(function0: &Function<ID, ODA>, function1: &Function<ID, ODB>) -> Self {
         let function0 = function0.function.clone();
         let function1 = function1.function.clone();
-        let function = move |arg: *const ID::Carrier| -> Box<(Box<ODA::Carrier>, Box<ODB::Carrier>)> {
+        let function = move |arg: & ID::Carrier| {
             let res0 = function0(arg);
             let res1 = function1(arg);
             Box::new((res0, res1))
@@ -75,47 +70,27 @@ pub trait Measure: Clone {
 
 #[derive(Clone)]
 pub struct PrivacyRelation<IM: Metric, OM: Measure> {
-    relation: Rc<dyn Fn(*const IM::Distance, *const OM::Distance) -> bool>
+    relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
 }
 impl<IM: Metric, OM: Measure> PrivacyRelation<IM, OM> {
     pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
-        let relation = move |input_distance: *const IM::Distance, output_distance: *const OM::Distance| -> bool {
-            let input_distance = ffi_utils::as_ref(input_distance);
-            let output_distance = ffi_utils::as_ref(output_distance);
-            relation(input_distance, output_distance)
-        };
         let relation = Rc::new(relation);
         PrivacyRelation { relation }
     }
     pub fn eval(&self, input_distance: &IM::Distance, output_distance: &OM::Distance) -> bool {
-        let input_distance = input_distance as *const IM::Distance;
-        let output_distance = output_distance as *const OM::Distance;
-        (self.relation)(input_distance, output_distance)
-    }
-    pub fn eval_ffi(&self, input_distance: *const IM::Distance, output_distance: *const OM::Distance) -> bool {
         (self.relation)(input_distance, output_distance)
     }
 }
 
 pub struct StabilityRelation<IM: Metric, OM: Metric> {
-    relation: Rc<dyn Fn(*const IM::Distance, *const OM::Distance) -> bool>
+    relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
 }
 impl<IM: Metric, OM: Metric> StabilityRelation<IM, OM> {
     pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
-        let relation = move |input_distance: *const IM::Distance, output_distance: *const OM::Distance| -> bool {
-            let input_distance = ffi_utils::as_ref(input_distance);
-            let output_distance = ffi_utils::as_ref(output_distance);
-            relation(input_distance, output_distance)
-        };
         let relation = Rc::new(relation);
         StabilityRelation { relation }
     }
     pub fn eval(&self, input_distance: &IM::Distance, output_distance: &OM::Distance) -> bool {
-        let input_distance = input_distance as *const IM::Distance;
-        let output_distance = output_distance as *const OM::Distance;
-        (self.relation)(input_distance, output_distance)
-    }
-    pub fn eval_ffi(&self, input_distance: *const IM::Distance, output_distance: *const OM::Distance) -> bool {
         (self.relation)(input_distance, output_distance)
     }
 }
