@@ -1,7 +1,7 @@
 import opendp
 
 def main():
-    lib_path = "../target/debug/libffi_probe.dylib"
+    lib_path = "../rust/target/debug/libopendp.dylib"
     odp = opendp.OpenDP(lib_path)
 
     ### HELLO WORLD

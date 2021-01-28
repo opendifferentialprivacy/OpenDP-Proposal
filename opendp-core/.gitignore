@@ -1,4 +1,4 @@
 /cruft/
 /python/.ipynb_checkpoints/
 /python/__pycache__/
-/target/
+/rust/target/
