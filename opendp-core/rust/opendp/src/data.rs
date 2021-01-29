@@ -1,3 +1,8 @@
+//! Framework for flexibile abstract data type model (semi-obsolete).
+//!
+//! This was going to be our main way of encoding data going in and out of the library, but now that we have full generics everywhere,
+//! it's mostly obsolete. The one thing we might salvage is the functionality of dataframes, which is implemented as `HashMap<String, Data>`.
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;

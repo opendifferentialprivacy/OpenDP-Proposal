@@ -1,3 +1,5 @@
+//! Various implementations of Metric/Measure (and associated Distance).
+
 use std::marker::PhantomData;
 
 use crate::core::{Measure, Metric};

@@ -1,13 +1,26 @@
+//! Core concepts of OpenDP.
+//!
+//! This module provides the central building blocks used throughout OpenDP:
+//! * Measurement
+//! * Transformation
+//! * Domain
+//! * Metric/Measure
+//! * Function
+//! * PrivacyRelation/StabilityRelation
+
 use std::rc::Rc;
 
 use crate::dom::{BoxDomain, PairDomain};
 
-// BUILDING BLOCKS
+/// A set which constrains the input or output of a [`Function`].
+///
+/// Domains capture the notion of what values are allowed to be the input or output of a `Function`.
 pub trait Domain: Clone + PartialEq {
     type Carrier;
     fn member(&self, val: &Self::Carrier) -> bool;
 }
 
+/// A mathematical function which maps values from an input [`Domain`] to an output [`Domain`].
 #[derive(Clone)]
 pub struct Function<ID: Domain, OD: Domain> {
     function: Rc<dyn Fn(&ID::Carrier) -> Box<OD::Carrier>>
@@ -59,14 +72,20 @@ impl<ID: 'static + Domain, ODA: 'static + Domain, ODB: 'static + Domain> Functio
     }
 }
 
+/// A function defining the distance between two elements in a set.
 pub trait Metric: Clone {
     type Distance;
 }
 
+/// A function defining the distance between two distributions.
 pub trait Measure: Clone {
     type Distance;
 }
 
+/// A boolean relation evaluating the privacy of a [`Measurement`].
+///
+/// A `PrivacyRelation` is implemented as a function that takes an input [`Metric::Distance`] and output [`Measure::Distance`],
+/// and returns a boolean indicating if the relation holds.
 #[derive(Clone)]
 pub struct PrivacyRelation<IM: Metric, OM: Measure> {
     relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
@@ -81,6 +100,11 @@ impl<IM: Metric, OM: Measure> PrivacyRelation<IM, OM> {
     }
 }
 
+/// A boolean relation evaluating the stability of a [`Transformation`].
+///
+/// A `StabilityRelation` is implemented as a function that takes an input and output [`Metric::Distance`],
+/// and returns a boolean indicating if the relation holds.
+#[derive(Clone)]
 pub struct StabilityRelation<IM: Metric, OM: Metric> {
     relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
 }
@@ -95,7 +119,7 @@ impl<IM: Metric, OM: Metric> StabilityRelation<IM, OM> {
 }
 
 
-// MEASUREMENTS & TRANSFORMATIONS
+/// A randomized mechanism with certain privacy characteristics.
 pub struct Measurement<ID: Domain, OD: Domain, IM: Metric, OM: Measure> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
@@ -124,6 +148,7 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Measure> Measurement<ID, OD, IM, OM
     }
 }
 
+/// A data transformation with certain stability characteristics.
 pub struct Transformation<ID: Domain, OD: Domain, IM: Metric, OM: Metric> {
     pub input_domain: Box<ID>,
     pub output_domain: Box<OD>,
@@ -166,6 +191,7 @@ fn new_domain_glue<D: Domain>() -> (Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>, Rc<dyn
     (eq, clone)
 }
 
+/// Public only for access from FFI.
 #[derive(Clone)]
 pub struct MeasureGlue<D: Domain, M: Measure> {
     pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
@@ -180,6 +206,7 @@ impl<D: 'static + Domain, M: 'static + Measure> MeasureGlue<D, M> {
     }
 }
 
+/// Public only for access from FFI.
 #[derive(Clone)]
 pub struct MetricGlue<D: Domain, M: Metric> {
     pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,

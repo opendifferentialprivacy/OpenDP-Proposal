@@ -1,3 +1,9 @@
+//! Various implementations of Domain.
+//!
+//! These different versions of [`Domain`] provide a general set of models used throughout OpenDP.
+//! Most of the implementaitons are generic, with the type parameter setting the underlying [`Domain::Carrier`]
+//! type.
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Bound;

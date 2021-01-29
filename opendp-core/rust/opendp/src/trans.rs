@@ -1,3 +1,8 @@
+//! Various implementations of Transformations.
+//!
+//! The different [`Transformation`] implementations in this module are accessed by calling the appropriate constructor function.
+//! Constructors are named in the form `make_xxx()`, where `xxx` indicates what the resulting `Transformation` does.
+
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter;
@@ -10,6 +15,7 @@ use crate::data::{Data, Element};
 use crate::dist::L1Sensitivity;
 use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
+/// Utility to create a new [`Transformation`] with the given parameters, and 1-stability.
 fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Transformation<ID, OD, L1Sensitivity<i32>, L1Sensitivity<i32>> {
     let input_metric = L1Sensitivity::new();
     let output_metric = L1Sensitivity::new();
@@ -17,6 +23,7 @@ fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
+/// Constructs a [`Transformation`] of the identity function.
 pub fn make_identity<T: Clone>() -> Transformation<AllDomain<T>, AllDomain<T>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
     let input_domain = AllDomain::<T>::new();
     let output_domain = AllDomain::<T>::new();
@@ -38,6 +45,7 @@ fn split_lines(s: &str) -> Vec<&str> {
     s.lines().collect()
 }
 
+/// Constructs a [`Transformation`] that takes a `String` and splits it into a `Vect<String>` of its lines.
 pub fn make_split_lines() -> Transformation<AllDomain<String>, VectorDomain<AllDomain<String>>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
     let input_domain = AllDomain::<String>::new();
     let output_domain = VectorDomain::new_all();
