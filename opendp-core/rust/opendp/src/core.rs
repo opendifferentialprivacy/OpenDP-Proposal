@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use crate::core::ffi::{DomainMeasureGlue, DomainMetricGlue};
 use crate::dom::{BoxDomain, PairDomain};
 
 // BUILDING BLOCKS
@@ -154,16 +153,58 @@ impl<ID: Domain, OD: Domain, IM: Metric, OM: Metric> Transformation<ID, OD, IM, 
 }
 
 
+// GLUE FOR FFI USE OF COMBINATORS
+fn new_clone<T: Clone>() -> Rc<dyn Fn(&Box<T>) -> Box<T>> {
+    let clone = |t: &Box<T>| t.clone();
+    Rc::new(clone)
+}
+
+fn new_domain_glue<D: Domain>() -> (Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>, Rc<dyn Fn(&Box<D>) -> Box<D>>) {
+    let eq = |d0: &Box<D>, d1: &Box<D>| d0 == d1;
+    let eq = Rc::new(eq);
+    let clone = new_clone();
+    (eq, clone)
+}
+
+#[derive(Clone)]
+pub struct MeasureGlue<D: Domain, M: Measure> {
+    pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
+    pub domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>,
+    pub measure_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>,
+}
+impl<D: 'static + Domain, M: 'static + Measure> MeasureGlue<D, M> {
+    pub fn new() -> Self {
+        let (domain_eq, domain_clone) = new_domain_glue();
+        let measure_clone = new_clone();
+        MeasureGlue { domain_eq, domain_clone, measure_clone }
+    }
+}
+
+#[derive(Clone)]
+pub struct MetricGlue<D: Domain, M: Metric> {
+    pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
+    pub domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>,
+    pub metric_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>,
+}
+impl<D: 'static + Domain, M: 'static + Metric> MetricGlue<D, M> {
+    pub fn new() -> Self {
+        let (domain_eq, domain_clone) = new_domain_glue();
+        let metric_clone = new_clone();
+        MetricGlue { domain_eq, domain_clone, metric_clone }
+    }
+}
+
+
 // CHAINING & COMPOSITION
 pub fn make_chain_mt<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>) -> Measurement<ID, OD, IM, OM> where
     ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, XM: 'static + Metric, OM: 'static + Measure {
-    let input_glue = DomainMetricGlue::<ID, IM>::new_from_type();
-    let x_glue = DomainMetricGlue::<XD, XM>::new_from_type();
-    let output_glue = DomainMeasureGlue::<OD, OM>::new_from_type();
+    let input_glue = MetricGlue::<ID, IM>::new();
+    let x_glue = MetricGlue::<XD, XM>::new();
+    let output_glue = MeasureGlue::<OD, OM>::new();
     make_chain_mt_core(measurement1, transformation0, &input_glue, &x_glue, &output_glue)
 }
 
-fn make_chain_mt_core<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &DomainMetricGlue<ID, IM>, x_glue: &DomainMetricGlue<XD, XM>, output_glue: &DomainMeasureGlue<OD, OM>) -> Measurement<ID, OD, IM, OM> where
+fn make_chain_mt_core<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &MetricGlue<ID, IM>, x_glue: &MetricGlue<XD, XM>, output_glue: &MeasureGlue<OD, OM>) -> Measurement<ID, OD, IM, OM> where
     ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, XM: 'static + Metric, OM: 'static + Measure {
     assert!((x_glue.domain_eq)(&transformation0.output_domain, &measurement1.input_domain));
     let input_domain = (input_glue.domain_clone)(&transformation0.input_domain);
@@ -178,13 +219,13 @@ fn make_chain_mt_core<ID, XD, OD, IM, XM, OM>(measurement1: &Measurement<XD, OD,
 
 pub fn make_chain_tt<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>) -> Transformation<ID, OD, IM, OM> where
     ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, XM: 'static + Metric, OM: 'static + Metric {
-    let input_glue = DomainMetricGlue::<ID, IM>::new_from_type();
-    let x_glue = DomainMetricGlue::<XD, XM>::new_from_type();
-    let output_glue = DomainMetricGlue::<OD, OM>::new_from_type();
+    let input_glue = MetricGlue::<ID, IM>::new();
+    let x_glue = MetricGlue::<XD, XM>::new();
+    let output_glue = MetricGlue::<OD, OM>::new();
     make_chain_tt_core(transformation1, transformation0, &input_glue, &x_glue, &output_glue)
 }
 
-fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &DomainMetricGlue<ID, IM>, x_glue: &DomainMetricGlue<XD, XM>, output_glue: &DomainMetricGlue<OD, OM>) -> Transformation<ID, OD, IM, OM> where
+fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<XD, OD, XM, OM>, transformation0: &Transformation<ID, XD, IM, XM>, input_glue: &MetricGlue<ID, IM>, x_glue: &MetricGlue<XD, XM>, output_glue: &MetricGlue<OD, OM>) -> Transformation<ID, OD, IM, OM> where
     ID: 'static + Domain, XD: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, XM: 'static + Metric, OM: 'static + Metric {
     assert!((x_glue.domain_eq)(&transformation0.output_domain, &transformation1.input_domain));
     let input_domain = (input_glue.domain_clone)(&transformation0.input_domain);
@@ -199,13 +240,13 @@ fn make_chain_tt_core<ID, XD, OD, IM, XM, OM>(transformation1: &Transformation<X
 
 pub fn make_composition<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>) -> Measurement<ID, PairDomain<BoxDomain<OD0>, BoxDomain<OD1>>, IM, OM> where
     ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: 'static + Metric, OM: 'static + Measure {
-    let input_glue = DomainMetricGlue::<ID, IM>::new_from_type();
-    let output_glue0 = DomainMeasureGlue::<OD0, OM>::new_from_type();
-    let output_glue1 = DomainMeasureGlue::<OD1, OM>::new_from_type();
+    let input_glue = MetricGlue::<ID, IM>::new();
+    let output_glue0 = MeasureGlue::<OD0, OM>::new();
+    let output_glue1 = MeasureGlue::<OD1, OM>::new();
     make_composition_core(measurement0, measurement1, &input_glue, &output_glue0, &output_glue1)
 }
 
-fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>, input_glue: &DomainMetricGlue<ID, IM>, output_glue0: &DomainMeasureGlue<OD0, OM>, output_glue1: &DomainMeasureGlue<OD1, OM>) -> Measurement<ID, PairDomain<BoxDomain<OD0>, BoxDomain<OD1>>, IM, OM> where
+fn make_composition_core<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID, OD0, IM, OM>, measurement1: &Measurement<ID, OD1, IM, OM>, input_glue: &MetricGlue<ID, IM>, output_glue0: &MeasureGlue<OD0, OM>, output_glue1: &MeasureGlue<OD1, OM>) -> Measurement<ID, PairDomain<BoxDomain<OD0>, BoxDomain<OD1>>, IM, OM> where
     ID: 'static + Domain, OD0: 'static + Domain, OD1: 'static + Domain, IM: 'static + Metric, OM: 'static + Measure {
     assert!((input_glue.domain_eq)(&measurement0.input_domain, &measurement1.input_domain));
     let input_domain = (input_glue.domain_clone)(&measurement0.input_domain);
@@ -267,53 +308,44 @@ pub(crate) mod ffi {
         }
     }
 
+    fn new_domain_types<D: 'static + Domain>() -> (Type, Type) {
+        let domain_type = Type::new::<D>();
+        let domain_carrier = Type::new::<D::Carrier>();
+        (domain_type, domain_carrier)
+    }
+
     #[derive(Clone)]
-    pub struct DomainMetricGlue<D: Domain, M: Metric> {
+    pub struct FfiMetricGlue<D: Domain, M: Metric> {
         pub domain_type: Type,
         pub domain_carrier: Type,
-        pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
-        pub domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>,
-        pub metric_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>,
+        pub metric_glue: MetricGlue<D, M>,
     }
-    impl<D: 'static + Domain, M: 'static + Metric> DomainMetricGlue<D, M> {
-        pub fn new_from_type() -> Self {
-            let domain_type = Type::new::<D>();
-            let domain_carrier = Type::new::<D::Carrier>();
-            let domain_eq = |d0: &Box<D>, d1: &Box<D>| d0 == d1;
-            let domain_eq = Rc::new(domain_eq);
-            let domain_clone = |d: &Box<D>| d.clone();
-            let domain_clone = Rc::new(domain_clone);
-            let metric_clone = |m: &Box<M>| m.clone();
-            let metric_clone = Rc::new(metric_clone);
-            Self::new(domain_type, domain_carrier, domain_eq, domain_clone, metric_clone)
+    impl<D: 'static + Domain, M: 'static + Metric> FfiMetricGlue<D, M> {
+        pub fn new() -> Self {
+            let (domain_type, domain_carrier) = new_domain_types::<D>();
+            let metric_glue = MetricGlue::new();
+            Self::new_explicit(domain_type, domain_carrier, metric_glue)
         }
-        pub fn new(domain_type: Type, domain_carrier: Type, domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>, domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>, metric_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>) -> Self {
-            DomainMetricGlue { domain_type, domain_carrier, domain_eq, domain_clone, metric_clone }
+
+        pub fn new_explicit(domain_type: Type, domain_carrier: Type, metric_glue: MetricGlue<D, M>) -> Self {
+            FfiMetricGlue { domain_type, domain_carrier, metric_glue }
         }
     }
 
     #[derive(Clone)]
-    pub struct DomainMeasureGlue<D: Domain, M: Measure> {
+    pub struct FfiMeasureGlue<D: Domain, M: Measure> {
         pub domain_type: Type,
         pub domain_carrier: Type,
-        pub domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>,
-        pub domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>,
-        pub measure_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>,
+        pub measure_glue: MeasureGlue<D, M>,
     }
-    impl<D: 'static + Domain, M: 'static + Measure> DomainMeasureGlue<D, M> {
-        pub fn new_from_type() -> Self {
-            let domain_type = Type::new::<D>();
-            let domain_carrier = Type::new::<D::Carrier>();
-            let domain_eq = |d0: &Box<D>, d1: &Box<D>| d0 == d1;
-            let domain_eq = Rc::new(domain_eq);
-            let domain_clone = |d: &Box<D>| d.clone();
-            let domain_clone = Rc::new(domain_clone);
-            let measure_clone = |m: &Box<M>| m.clone();
-            let measure_clone = Rc::new(measure_clone);
-            Self::new(domain_type, domain_carrier, domain_eq, domain_clone, measure_clone)
+    impl<D: 'static + Domain, M: 'static + Measure> FfiMeasureGlue<D, M> {
+        pub fn new() -> Self {
+            let (domain_type, domain_carrier) = new_domain_types::<D>();
+            let measure_glue = MeasureGlue::new();
+            Self::new_explicit(domain_type, domain_carrier, measure_glue)
         }
-        pub fn new(domain_type: Type, domain_carrier: Type, domain_eq: Rc<dyn Fn(&Box<D>, &Box<D>) -> bool>, domain_clone: Rc<dyn Fn(&Box<D>) -> Box<D>>, measure_clone: Rc<dyn Fn(&Box<M>) -> Box<M>>) -> Self {
-            DomainMeasureGlue { domain_type, domain_carrier, domain_eq, domain_clone, measure_clone }
+        pub fn new_explicit(domain_type: Type, domain_carrier: Type, measure_glue: MeasureGlue<D, M>) -> Self {
+            FfiMeasureGlue { domain_type, domain_carrier, measure_glue }
         }
     }
 
@@ -325,33 +357,33 @@ pub(crate) mod ffi {
     }
 
     #[derive(Clone)]
-    pub struct FfiMetric;
-    impl Metric for FfiMetric {
-        type Distance = ();
-    }
-
-    #[derive(Clone)]
     pub struct FfiMeasure;
     impl Measure for FfiMeasure {
         type Distance = ();
     }
 
+    #[derive(Clone)]
+    pub struct FfiMetric;
+    impl Metric for FfiMetric {
+        type Distance = ();
+    }
+
     pub struct FfiMeasurement {
-        pub input_glue: DomainMetricGlue<FfiDomain, FfiMetric>,
-        pub output_glue: DomainMeasureGlue<FfiDomain, FfiMeasure>,
+        pub input_glue: FfiMetricGlue<FfiDomain, FfiMetric>,
+        pub output_glue: FfiMeasureGlue<FfiDomain, FfiMeasure>,
         pub value: Box<Measurement<FfiDomain, FfiDomain, FfiMetric, FfiMeasure>>,
     }
 
     impl FfiMeasurement {
         pub fn new_from_types<ID: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, OM: 'static + Measure>(value: Measurement<ID, OD, IM, OM>) -> *mut FfiMeasurement {
-            let input_glue = DomainMetricGlue::<ID, IM>::new_from_type();
+            let input_glue = FfiMetricGlue::<ID, IM>::new();
             let input_glue = unsafe { transmute(input_glue) };
-            let output_glue = DomainMeasureGlue::<OD, OM>::new_from_type();
+            let output_glue = FfiMeasureGlue::<OD, OM>::new();
             let output_glue = unsafe { transmute(output_glue) };
             Self::new(input_glue, output_glue, value)
         }
 
-        pub fn new<ID: 'static + Domain, OD: 'static + Domain, IM: Metric, OM: Measure>(input_glue: DomainMetricGlue<FfiDomain, FfiMetric>, output_glue: DomainMeasureGlue<FfiDomain, FfiMeasure>, value: Measurement<ID, OD, IM, OM>) -> *mut FfiMeasurement {
+        pub fn new<ID: 'static + Domain, OD: 'static + Domain, IM: Metric, OM: Measure>(input_glue: FfiMetricGlue<FfiDomain, FfiMetric>, output_glue: FfiMeasureGlue<FfiDomain, FfiMeasure>, value: Measurement<ID, OD, IM, OM>) -> *mut FfiMeasurement {
             let value = ffi_utils::into_box(value);
             let ffi_measurement = FfiMeasurement { input_glue, output_glue, value };
             ffi_utils::into_raw(ffi_measurement)
@@ -359,21 +391,21 @@ pub(crate) mod ffi {
     }
 
     pub struct FfiTransformation {
-        pub input_glue: DomainMetricGlue<FfiDomain, FfiMetric>,
-        pub output_glue: DomainMetricGlue<FfiDomain, FfiMetric>,
+        pub input_glue: FfiMetricGlue<FfiDomain, FfiMetric>,
+        pub output_glue: FfiMetricGlue<FfiDomain, FfiMetric>,
         pub value: Box<Transformation<FfiDomain, FfiDomain, FfiMetric, FfiMetric>>,
     }
 
     impl FfiTransformation {
         pub fn new_from_types<ID: 'static + Domain, OD: 'static + Domain, IM: 'static + Metric, OM: 'static + Metric>(value: Transformation<ID, OD, IM, OM>) -> *mut FfiTransformation {
-            let input_glue = DomainMetricGlue::<ID, IM>::new_from_type();
+            let input_glue = FfiMetricGlue::<ID, IM>::new();
             let input_glue = unsafe { transmute(input_glue) };
-            let output_glue = DomainMetricGlue::<OD, OM>::new_from_type();
+            let output_glue = FfiMetricGlue::<OD, OM>::new();
             let output_glue = unsafe { transmute(output_glue) };
             Self::new(input_glue, output_glue, value)
         }
 
-        pub fn new<ID: 'static + Domain, OD: 'static + Domain, IM: Metric, OM: Metric>(input_glue: DomainMetricGlue<FfiDomain, FfiMetric>, output_glue: DomainMetricGlue<FfiDomain, FfiMetric>, value: Transformation<ID, OD, IM, OM>) -> *mut FfiTransformation {
+        pub fn new<ID: 'static + Domain, OD: 'static + Domain, IM: Metric, OM: Metric>(input_glue: FfiMetricGlue<FfiDomain, FfiMetric>, output_glue: FfiMetricGlue<FfiDomain, FfiMetric>, value: Transformation<ID, OD, IM, OM>) -> *mut FfiTransformation {
             let value = ffi_utils::into_box(value);
             let ffi_transformation = FfiTransformation { input_glue, output_glue, value };
             ffi_utils::into_raw(ffi_transformation)
@@ -418,7 +450,7 @@ pub(crate) mod ffi {
         let input_glue = transformation0.input_glue.clone();
         let x_glue = transformation0.output_glue.clone();
         let output_glue = measurement1.output_glue.clone();
-        let measurement = make_chain_mt_core(&measurement1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
+        let measurement = make_chain_mt_core(&measurement1.value, &transformation0.value, &input_glue.metric_glue, &x_glue.metric_glue, &output_glue.measure_glue);
         FfiMeasurement::new(input_glue, output_glue, measurement)
     }
 
@@ -430,7 +462,7 @@ pub(crate) mod ffi {
         let input_glue = transformation0.input_glue.clone();
         let x_glue = transformation0.output_glue.clone();
         let output_glue = transformation1.output_glue.clone();
-        let transformation = make_chain_tt_core(&transformation1.value, &transformation0.value, &input_glue, &x_glue, &output_glue);
+        let transformation = make_chain_tt_core(&transformation1.value, &transformation0.value, &input_glue.metric_glue, &x_glue.metric_glue, &output_glue.metric_glue);
         FfiTransformation::new(input_glue, output_glue, transformation)
     }
 
@@ -445,11 +477,9 @@ pub(crate) mod ffi {
         // TODO: output_glue for composition.
         let output_glue_domain_type = Type::new::<FfiDomain>();
         let output_glue_domain_carrier = Type::new_box_pair(&output_glue0.domain_carrier, &output_glue1.domain_carrier);
-        let output_glue_domain_eq = Rc::new(|_d0: &Box<FfiDomain>, _d1: &Box<FfiDomain>| false);
-        let output_glue_domain_clone = Rc::new(|d: &Box<FfiDomain>| d.clone());
-        let output_glue_measure_clone = Rc::new(|d: &Box<FfiMeasure>| d.clone());
-        let output_glue = DomainMeasureGlue::<FfiDomain, FfiMeasure>::new(output_glue_domain_type, output_glue_domain_carrier, output_glue_domain_eq, output_glue_domain_clone, output_glue_measure_clone);
-        let measurement = make_composition_core(&measurement0.value, &measurement1.value, &input_glue, &output_glue0, &output_glue1);
+        let output_glue_measure_glue = output_glue0.measure_glue.clone();
+        let output_glue = FfiMeasureGlue::<FfiDomain, FfiMeasure>::new_explicit(output_glue_domain_type, output_glue_domain_carrier, output_glue_measure_glue);
+        let measurement = make_composition_core(&measurement0.value, &measurement1.value, &input_glue.metric_glue, &output_glue0.measure_glue, &output_glue1.measure_glue);
         FfiMeasurement::new(input_glue, output_glue, measurement)
     }
 
