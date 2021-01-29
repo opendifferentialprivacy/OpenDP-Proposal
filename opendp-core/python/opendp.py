@@ -63,7 +63,8 @@ class OpenDP:
         self.lib = lib
         self.core = Mod(lib, "opendp_core__")
         self.data = Mod(lib, "opendp_data__")
-        self.ops = Mod(lib, "opendp_ops__")
+        self.meas = Mod(lib, "opendp_meas__")
+        self.trans = Mod(lib, "opendp_trans__")
         print("Initialized OpenDP Library")
 
     def str_to_c_char_p(self, s):
