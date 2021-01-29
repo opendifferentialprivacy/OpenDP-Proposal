@@ -270,7 +270,7 @@ pub fn make_composition_glue<ID, OD0, OD1, IM, OM>(measurement0: &Measurement<ID
 // UNIT TESTS
 #[cfg(test)]
 mod tests {
-    use crate::dis::{L1Sensitivity, MaxDivergence};
+    use crate::dist::{L1Sensitivity, MaxDivergence};
     use crate::dom::AllDomain;
 
     use super::*;

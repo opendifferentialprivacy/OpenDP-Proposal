@@ -9,7 +9,7 @@ use rand::Rng;
 
 use crate::core::{Domain, Measurement, Transformation};
 use crate::data::{Data, Element};
-use crate::dis::{L1Sensitivity, MaxDivergence};
+use crate::dist::{L1Sensitivity, MaxDivergence};
 use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
 fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Transformation<ID, OD, L1Sensitivity<i32>, L1Sensitivity<i32>> {
