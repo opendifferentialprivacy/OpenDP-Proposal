@@ -1,6 +1,6 @@
-use crate::core::{Metric, Measure};
 use std::marker::PhantomData;
 
+use crate::core::{Measure, Metric};
 
 /// Measures
 #[derive(Clone)]

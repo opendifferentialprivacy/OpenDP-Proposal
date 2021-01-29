@@ -1,11 +1,13 @@
 [package]
-name = "opendp"
+name = "opendp-ffi"
 version = "0.1.0"
 authors = ["Andrew Vyrros <6577271+andrewvyrros@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
-rand = "0.7.3"
+opendp = { path = "../opendp" }
+lazy_static = "1.4.0"
 
 [lib]
+crate-type = ["rlib", "cdylib"]
 doctest = false

@@ -1,10 +1,10 @@
+use std::any;
+use std::any::TypeId;
 use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
-use std::any::{TypeId, type_name};
-use std::convert::{TryFrom, TryInto};
-
 
 #[derive(Debug)]
 pub struct TypeError;
@@ -18,13 +18,13 @@ pub struct Type {
 
 impl Type {
     pub fn new<T: 'static>() -> Type {
-        let descriptor = type_name::<T>();
+        let descriptor = any::type_name::<T>();
         Self::new_descriptor::<T>(descriptor)
     }
 
     pub fn new_descriptor<T: 'static>(descriptor: &'static str) -> Type {
         let id = TypeId::of::<T>();
-        let name = type_name::<T>();
+        let name = any::type_name::<T>();
         Type { id, name, descriptor }
     }
 

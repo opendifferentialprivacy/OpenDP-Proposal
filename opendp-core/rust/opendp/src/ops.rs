@@ -7,10 +7,10 @@ use std::str::FromStr;
 
 use rand::Rng;
 
-use crate::core::{Measurement, Transformation, Domain};
-use crate::data::{Data, Element, Form};
-use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
+use crate::core::{Domain, Measurement, Transformation};
+use crate::data::{Data, Element};
 use crate::dis::{L1Sensitivity, MaxDivergence};
+use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
 fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Transformation<ID, OD, L1Sensitivity<i32>, L1Sensitivity<i32>> {
     let input_metric = L1Sensitivity::new();
@@ -247,156 +247,11 @@ pub fn make_base_laplace<T>(sigma: f64) -> Measurement<AllDomain<T>, AllDomain<T
 }
 
 
-mod ffi {
-    use std::os::raw::{c_char, c_uint, c_void};
-
-    use crate::core::ffi::{FfiMeasurement, FfiTransformation};
-    use crate::ffi_utils;
-    use crate::ffi_utils::c_bool;
-    use crate::ffi_utils::TypeArgs;
-
-    use super::*;
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_identity(type_args: *const c_char) -> *mut FfiTransformation {
-        fn monomorphize<T: 'static + Form + Clone>() -> *mut FfiTransformation {
-            let transformation = make_identity::<T>();
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_lines() -> *mut FfiTransformation {
-        let transformation = make_split_lines();
-        FfiTransformation::new_from_types(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_series(type_args: *const c_char, impute: c_bool) -> *mut FfiTransformation {
-        fn monomorphize<T>(impute: bool) -> *mut FfiTransformation where
-            T: 'static + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_series::<T>(impute);
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (impute))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_records(separator: *const c_char) -> *mut FfiTransformation {
-        let separator = ffi_utils::to_option_str(separator);
-        let transformation = make_split_records(separator);
-        FfiTransformation::new_from_types(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_create_dataframe(col_count: c_uint) -> *mut FfiTransformation {
-        let col_count = col_count as usize;
-        let transformation = make_create_dataframe(col_count);
-        FfiTransformation::new_from_types(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_split_dataframe(separator: *const c_char, col_count: c_uint) -> *mut FfiTransformation {
-        let separator = ffi_utils::to_option_str(separator);
-        let col_count = col_count as usize;
-        let transformation = make_split_dataframe(separator, col_count);
-        FfiTransformation::new_from_types(transformation)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_parse_column(type_args: *const c_char, key: *const c_char, impute: c_bool) -> *mut FfiTransformation {
-        fn monomorphize<T>(key: &str, impute: bool) -> *mut FfiTransformation where
-            T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
-            let transformation = make_parse_column::<T>(key, impute);
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let key = ffi_utils::to_str(key);
-        let impute = ffi_utils::to_bool(impute);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (key, impute))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_select_column(type_args: *const c_char, key: *const c_char) -> *mut FfiTransformation {
-        fn monomorphize<T>(key: &str) -> *mut FfiTransformation where
-            T: 'static + Element + Clone + PartialEq {
-            let transformation = make_select_column::<T>(key);
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        let key = ffi_utils::to_str(key);
-        dispatch!(monomorphize, [(type_args.0[0], @primitives)], (key))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_clamp(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
-        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
-            T: 'static + Copy + PartialOrd {
-            let lower = ffi_utils::as_ref(lower as *const T).clone();
-            let upper = ffi_utils::as_ref(upper as *const T).clone();
-            let transformation = make_clamp::<T>(lower, upper);
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_bounded_sum(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
-        fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
-            T: 'static + Clone + PartialOrd + Sum {
-            let lower = ffi_utils::as_ref(lower as *const T).clone();
-            let upper = ffi_utils::as_ref(upper as *const T).clone();
-            let transformation = make_bounded_sum::<T>(lower, upper);
-            FfiTransformation::new_from_types(transformation)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__make_base_laplace(type_args: *const c_char, sigma: f64) -> *mut FfiMeasurement {
-        fn monomorphize<T>(sigma: f64) -> *mut FfiMeasurement where
-            T: 'static + Copy + PartialEq + AddNoise {
-            let measurement = make_base_laplace::<T>(sigma);
-            FfiMeasurement::new_from_types(measurement)
-        }
-        let type_args = TypeArgs::expect(type_args, 1);
-        dispatch!(monomorphize, [(type_args.0[0], @numbers)], (sigma))
-    }
-
-    #[no_mangle]
-    pub extern "C" fn opendp_ops__bootstrap() -> *const c_char {
-        let spec =
-r#"{
-    "functions": [
-        { "name": "make_identity", "ret": "void *" },
-        { "name": "make_split_lines", "ret": "void *" },
-        { "name": "make_parse_series", "args": [ ["const char *", "selector"], ["bool", "impute"] ], "ret": "void *" },
-        { "name": "make_split_records", "args": [ ["const char *", "separator"] ], "ret": "void *" },
-        { "name": "make_create_dataframe", "args": [ ["unsigned int", "col_count"] ], "ret": "void *" },
-        { "name": "make_split_dataframe", "args": [ ["const char *", "separator"], ["unsigned int", "col_count"] ], "ret": "void *" },
-        { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
-        { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const char *", "key"] ], "ret": "void *" },
-        { "name": "make_clamp", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-        { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-        { "name": "make_base_laplace", "args": [ ["const char *", "selector"], ["double", "sigma"] ], "ret": "void *" }
-    ]
-}"#;
-        ffi_utils::bootstrap(spec)
-    }
-
-}
-
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::core::make_chain_tt;
+
+    use super::*;
 
     #[test]
     fn test_identity() {
