@@ -100,12 +100,25 @@ pub extern "C" fn opendp_trans__make_clamp(type_args: *const c_char, lower: *con
 }
 
 #[no_mangle]
-pub extern "C" fn opendp_trans__make_bounded_sum(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+pub extern "C" fn opendp_trans__make_bounded_sum_l1(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
     fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
         T: 'static + Clone + PartialOrd + Sum {
         let lower = util::as_ref(lower as *const T).clone();
         let upper = util::as_ref(upper as *const T).clone();
-        let transformation = trans::make_bounded_sum::<T>(lower, upper);
+        let transformation = trans::make_bounded_sum_l1::<T>(lower, upper);
+        FfiTransformation::new_from_types(transformation)
+    }
+    let type_args = TypeArgs::expect(type_args, 1);
+    dispatch!(monomorphize, [(type_args.0[0], @numbers)], (lower, upper))
+}
+
+#[no_mangle]
+pub extern "C" fn opendp_trans__make_bounded_sum_l2(type_args: *const c_char, lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation {
+    fn monomorphize<T>(lower: *const c_void, upper: *const c_void) -> *mut FfiTransformation where
+        T: 'static + Clone + PartialOrd + Sum {
+        let lower = util::as_ref(lower as *const T).clone();
+        let upper = util::as_ref(upper as *const T).clone();
+        let transformation = trans::make_bounded_sum_l2::<T>(lower, upper);
         FfiTransformation::new_from_types(transformation)
     }
     let type_args = TypeArgs::expect(type_args, 1);
@@ -126,7 +139,8 @@ r#"{
     { "name": "make_parse_column", "args": [ ["const char *", "selector"], ["const char *", "key"], ["bool", "impute"] ], "ret": "void *" },
     { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const char *", "key"] ], "ret": "void *" },
     { "name": "make_clamp", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-    { "name": "make_bounded_sum", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" }
+    { "name": "make_bounded_sum_l1", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
+    { "name": "make_bounded_sum_l2", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" }
 ]
 }"#;
     util::bootstrap(spec)

@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 use crate::core::{Domain, Transformation};
 use crate::data::{Data, Element};
-use crate::dist::L1Sensitivity;
+use crate::dist::{HammingDistance, L1Sensitivity, L2Sensitivity};
 use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
 /// Utility to create a new [`Transformation`] with the given parameters, and 1-stability.
@@ -209,7 +209,7 @@ pub fn make_clamp<T>(lower: T, upper: T) -> Transformation<VectorDomain<AllDomai
     new_1_stable_transformation(input_domain, output_domain, function)
 }
 
-pub fn make_bounded_sum<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, L1Sensitivity<i32>, L1Sensitivity<i32>> where
+pub fn make_bounded_sum_l1<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L1Sensitivity<i32>> where
     T: 'static + Clone + PartialOrd + Sum<T> {
     let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
     let output_domain = AllDomain::new();
@@ -218,7 +218,27 @@ pub fn make_bounded_sum<T>(lower: T, upper: T) -> Transformation<VectorDomain<In
         let arg = arg.clone();
         arg.into_iter().sum()
     };
-    new_1_stable_transformation(input_domain, output_domain, function)
+    let input_metric = HammingDistance::new();
+    let output_metric = L1Sensitivity::new();
+    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
+}
+
+pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L2Sensitivity<i32>> where
+    T: 'static + Clone + PartialOrd + Sum<T> {
+    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+    let output_domain = AllDomain::new();
+    let function = |arg: &Vec<T>| -> T {
+        // FIXME: Can't make this work with references, have to clone.
+        let arg = arg.clone();
+        arg.into_iter().sum()
+    };
+
+    // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the conrete type
+    let input_metric = HammingDistance::new();
+    let output_metric = L2Sensitivity::new();
+    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
 
@@ -350,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_make_bounded_sum() {
-        let transformation = make_bounded_sum::<i32>(0, 10);
+        let transformation = make_bounded_sum_l1::<i32>(0, 10);
         let arg = vec![1, 2, 3, 4, 5];
         let ret = transformation.function.eval(&arg);
         let expected = 15;
