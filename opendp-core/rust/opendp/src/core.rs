@@ -16,14 +16,16 @@ use crate::dom::{BoxDomain, PairDomain};
 ///
 /// Domains capture the notion of what values are allowed to be the input or output of a `Function`.
 pub trait Domain: Clone + PartialEq {
+    /// The underlying type that the Domain specializes.
     type Carrier;
+    /// Predicate to test an element for membership in the domain.
     fn member(&self, val: &Self::Carrier) -> bool;
 }
 
 /// A mathematical function which maps values from an input [`Domain`] to an output [`Domain`].
 #[derive(Clone)]
 pub struct Function<ID: Domain, OD: Domain> {
-    function: Rc<dyn Fn(&ID::Carrier) -> Box<OD::Carrier>>
+    pub function: Rc<dyn Fn(&ID::Carrier) -> Box<OD::Carrier>>
 }
 
 impl<ID: Domain, OD: Domain> Function<ID, OD> {
@@ -72,12 +74,12 @@ impl<ID: 'static + Domain, ODA: 'static + Domain, ODB: 'static + Domain> Functio
     }
 }
 
-/// A function defining the distance between two elements in a set.
+/// A representation of the distance between two elements in a set.
 pub trait Metric: Clone {
     type Distance;
 }
 
-/// A function defining the distance between two distributions.
+/// A representation of the distance between two distributions.
 pub trait Measure: Clone {
     type Distance;
 }
@@ -88,7 +90,7 @@ pub trait Measure: Clone {
 /// and returns a boolean indicating if the relation holds.
 #[derive(Clone)]
 pub struct PrivacyRelation<IM: Metric, OM: Measure> {
-    relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
+    pub relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
 }
 impl<IM: Metric, OM: Measure> PrivacyRelation<IM, OM> {
     pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
@@ -106,7 +108,7 @@ impl<IM: Metric, OM: Measure> PrivacyRelation<IM, OM> {
 /// and returns a boolean indicating if the relation holds.
 #[derive(Clone)]
 pub struct StabilityRelation<IM: Metric, OM: Metric> {
-    relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
+    pub relation: Rc<dyn Fn(&IM::Distance, &OM::Distance) -> bool>
 }
 impl<IM: Metric, OM: Metric> StabilityRelation<IM, OM> {
     pub fn new(relation: impl Fn(&IM::Distance, &OM::Distance) -> bool + 'static) -> Self {
