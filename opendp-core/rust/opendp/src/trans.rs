@@ -214,9 +214,7 @@ pub fn make_bounded_sum_l1<T>(lower: T, upper: T) -> Transformation<VectorDomain
     let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
     let output_domain = AllDomain::new();
     let function = |arg: &Vec<T>| -> T {
-        // FIXME: Can't make this work with references, have to clone.
-        let arg = arg.clone();
-        arg.into_iter().sum()
+        arg.iter().cloned().sum()
     };
     let input_metric = HammingDistance::new();
     let output_metric = L1Sensitivity::new();
@@ -229,12 +227,37 @@ pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain
     let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
     let output_domain = AllDomain::new();
     let function = |arg: &Vec<T>| -> T {
-        // FIXME: Can't make this work with references, have to clone.
-        let arg = arg.clone();
-        arg.into_iter().sum()
+        arg.iter().cloned().sum()
+    };
+    // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
+    let input_metric = HammingDistance::new();
+    let output_metric = L2Sensitivity::new();
+    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
+}
+
+pub fn make_count_l1<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<usize>, HammingDistance, L1Sensitivity<i32>>  {
+    let input_domain = VectorDomain::new(AllDomain::new());
+    let output_domain = AllDomain::new();
+    let function = |arg: &Vec<T>| -> usize {
+        arg.len()
     };
 
-    // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the conrete type
+    // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
+    let input_metric = HammingDistance::new();
+    let output_metric = L1Sensitivity::new();
+    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
+}
+
+pub fn make_count_l2<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<usize>, HammingDistance, L2Sensitivity<i32>>  {
+    let input_domain = VectorDomain::new(AllDomain::new());
+    let output_domain = AllDomain::new();
+    let function = |arg: &Vec<T>| -> usize {
+        arg.len()
+    };
+
+    // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
     let input_metric = HammingDistance::new();
     let output_metric = L2Sensitivity::new();
     let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
@@ -369,11 +392,38 @@ mod tests {
     }
 
     #[test]
-    fn test_make_bounded_sum() {
+    fn test_make_bounded_sum_l1() {
         let transformation = make_bounded_sum_l1::<i32>(0, 10);
         let arg = vec![1, 2, 3, 4, 5];
         let ret = transformation.function.eval(&arg);
         let expected = 15;
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_bounded_sum_l2() {
+        let transformation = make_bounded_sum_l2::<i32>(0, 10);
+        let arg = vec![1, 2, 3, 4, 5];
+        let ret = transformation.function.eval(&arg);
+        let expected = 15;
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_count_l1() {
+        let transformation = make_count_l1::<i32>();
+        let arg = vec![1, 2, 3, 4, 5];
+        let ret = transformation.function.eval(&arg);
+        let expected = 5;
+        assert_eq!(ret, expected);
+    }
+
+    #[test]
+    fn test_make_count_l2() {
+        let transformation = make_count_l2::<i32>();
+        let arg = vec![1, 2, 3, 4, 5];
+        let ret = transformation.function.eval(&arg);
+        let expected = 5;
         assert_eq!(ret, expected);
     }
 
