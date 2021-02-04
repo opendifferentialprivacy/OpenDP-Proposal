@@ -236,11 +236,11 @@ pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
-pub fn make_count_l1<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<usize>, HammingDistance, L1Sensitivity<i32>>  {
+pub fn make_count_l1<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<u32>, HammingDistance, L1Sensitivity<i32>>  {
     let input_domain = VectorDomain::new(AllDomain::new());
     let output_domain = AllDomain::new();
-    let function = |arg: &Vec<T>| -> usize {
-        arg.len()
+    let function = |arg: &Vec<T>| -> u32 {
+        arg.len() as u32
     };
 
     // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
@@ -250,11 +250,11 @@ pub fn make_count_l1<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomai
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
-pub fn make_count_l2<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<usize>, HammingDistance, L2Sensitivity<i32>>  {
+pub fn make_count_l2<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomain<u32>, HammingDistance, L2Sensitivity<i32>>  {
     let input_domain = VectorDomain::new(AllDomain::new());
     let output_domain = AllDomain::new();
-    let function = |arg: &Vec<T>| -> usize {
-        arg.len()
+    let function = |arg: &Vec<T>| -> u32 {
+        arg.len() as u32
     };
 
     // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
