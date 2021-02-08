@@ -2,7 +2,7 @@
 //!
 //! This library follows the model described in the paper,
 //! [A Programming Framework for OpenDP](https://projects.iq.harvard.edu/files/opendp/files/opendp_programming_framework_11may2020_1_01.pdf).
-//! OpenDP is part of the larger [OpenDP Project](https://opendp.org).
+//! OpenDP (the library) is part of the larger [OpenDP Project](https://opendp.org).
 //!
 //! [`Domain`]: core::Domain
 //! [`Domain::Carrier`]: core::Domain::Carrier
@@ -27,11 +27,43 @@
 //!
 //! # User Guide
 //!
-//! OpenDP applications are written by using constructors and combinators to create private computation pipelines.
+//! OpenDP applications are created by using constructors and combinators to create private computation pipelines.
+//! These can be written directly in Rust, or by using a language binding that uses OpenDP through an FFI interface.
+//! Python is the first language binding available, but we made add others in the future.
 //!
-//! Here's a simple example:
+//! ## Rust Application Example
 //!
-//! # Developer Guide
+//! Here's a simple example of using OpenDP from Rust to create a private sum:
+//! ```
+//! pub fn example() {
+//!     let data = "56\n15\n97\n56\n6\n17\n2\n19\n16\n50".to_owned();
+//!     let bounds = (0.0, 100.0);
+//!     let epsilon = 1.0;
+//!     let sigma = (bounds.1 - bounds.0) / epsilon;
+//!
+//!     // Construct a Transformation to load the numbers.
+//!     let split_lines = trans::make_split_lines();
+//!     let parse_series = trans::make_parse_series::<f64>(true);
+//!     let load_numbers = core::make_chain_tt(&parse_series, &split_lines);
+//!
+//!     // Construct a Measurment to calculate a noisy sum.
+//!     let clamp = trans::make_clamp(bounds.0, bounds.1);
+//!     let bounded_sum = trans::make_bounded_sum_l1(bounds.0, bounds.1);
+//!     let laplace = meas::make_base_laplace(sigma);
+//!     let intermediate = core::make_chain_tt(&bounded_sum, &clamp);
+//!     let noisy_sum = core::make_chain_mt(&laplace, &intermediate);
+//!
+//!     // Put it all together.
+//!     let pipeline = core::make_chain_mt(&noisy_sum, &load_numbers);
+//!     let result = pipeline.function.eval(&data);
+//!     println!("result = {}", result);
+//!  }
+//! ```
+//!
+//! # Contributor Guide
+//!
+//! Contributions to OpenDP typically take the form of what we call "Components." A Component is shorthand for
+//! the collection of code that comprises a  [`Measurement`] or [`Transformation`].
 //!
 //! ## Adding Components
 //!
@@ -50,7 +82,7 @@
 //! 3. Choose the appropriate input and output [`Metric`]/[`Measure`].
 //! 4. Write a closure that implements the [`PrivacyRelation`]/[`StabilityRelation`].
 //!
-//! #### Example
+//! #### Example Transformation Constructor
 //! ```
 //!# use opendp::core::Transformation;
 //!# use opendp::dist::L1Sensitivity;
