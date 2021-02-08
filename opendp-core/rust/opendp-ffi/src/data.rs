@@ -29,6 +29,7 @@ pub extern "C" fn opendp_data__to_string(this: *const FfiObject) -> *const c_cha
         HashMap<String, Data>,
         // FIXME: The following are for Python demo use of compositions. Need to figure this out!!!
         (Box<i32>, Box<f64>),
+        (Box<i32>, Box<u32>),
         (Box<(Box<f64>, Box<f64>)>, Box<f64>)
     ])], (this))
 }

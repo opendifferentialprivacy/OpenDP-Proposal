@@ -126,6 +126,26 @@ pub extern "C" fn opendp_trans__make_bounded_sum_l2(type_args: *const c_char, lo
 }
 
 #[no_mangle]
+pub extern "C" fn opendp_trans__make_count_l1(type_args: *const c_char) -> *mut FfiTransformation {
+    fn monomorphize<T>() -> *mut FfiTransformation where T: 'static {
+        let transformation = trans::make_count_l1::<T>();
+        FfiTransformation::new_from_types(transformation)
+    }
+    let type_args = TypeArgs::expect(type_args, 1);
+    dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
+}
+
+#[no_mangle]
+pub extern "C" fn opendp_trans__make_count_l2(type_args: *const c_char) -> *mut FfiTransformation {
+    fn monomorphize<T>() -> *mut FfiTransformation where T: 'static {
+        let transformation = trans::make_count_l2::<T>();
+        FfiTransformation::new_from_types(transformation)
+    }
+    let type_args = TypeArgs::expect(type_args, 1);
+    dispatch!(monomorphize, [(type_args.0[0], @primitives)], ())
+}
+
+#[no_mangle]
 pub extern "C" fn opendp_trans__bootstrap() -> *const c_char {
     let spec =
 r#"{
@@ -140,7 +160,9 @@ r#"{
     { "name": "make_select_column", "args": [ ["const char *", "selector"], ["const char *", "key"] ], "ret": "void *" },
     { "name": "make_clamp", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
     { "name": "make_bounded_sum_l1", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
-    { "name": "make_bounded_sum_l2", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" }
+    { "name": "make_bounded_sum_l2", "args": [ ["const char *", "selector"], ["void *", "lower"], ["void *", "upper"] ], "ret": "void *" },
+    { "name": "make_count_l1", "args": [ ["const char *", "selector"] ], "ret": "void *" },
+    { "name": "make_count_l2", "args": [ ["const char *", "selector"] ], "ret": "void *" }
 ]
 }"#;
     util::bootstrap(spec)

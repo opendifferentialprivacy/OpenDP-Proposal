@@ -27,15 +27,14 @@ def main():
     base_laplace_1 = odp.meas.make_base_laplace(b"<i32>", 1.0)
     noisy_sum_1 = odp.core.make_chain_mt(base_laplace_1, odp.make_chain_tt_multi(bounded_sum_1, clamp_1, select_1))
 
-    # Noisy sum, col 2
+    # Count, col 2
     select_2 = odp.trans.make_select_column(b"<f64>", b"2")
-    clamp_2 = odp.trans.make_clamp(b"<f64>", odp.f64_p(0.0), odp.f64_p(10.0))
-    bounded_sum_2 = odp.trans.make_bounded_sum_l2(b"<f64>", odp.f64_p(0.0), odp.f64_p(10.0))
-    base_laplace_2 = odp.meas.make_base_laplace(b"<f64>", 1.0)
-    noisy_sum_2 = odp.core.make_chain_mt(base_laplace_2, odp.make_chain_tt_multi(bounded_sum_2, clamp_2, select_2))
+    count_2 = odp.trans.make_count_l2(b"<f64>")
+    base_laplace_2 = odp.meas.make_base_laplace(b"<u32>", 1.0)
+    noisy_count_2 = odp.core.make_chain_mt(base_laplace_2, odp.make_chain_tt_multi(count_2, select_2))
 
     # Compose & chain
-    composition = odp.core.make_composition(noisy_sum_1, noisy_sum_2)
+    composition = odp.core.make_composition(noisy_sum_1, noisy_count_2)
     everything = odp.core.make_chain_tt(composition, parse_dataframe)
 
     # Do it!!!
