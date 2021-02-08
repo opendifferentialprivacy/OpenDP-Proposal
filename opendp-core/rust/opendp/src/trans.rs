@@ -16,15 +16,15 @@ use crate::dist::{HammingDistance, L1Sensitivity, L2Sensitivity};
 use crate::dom::{AllDomain, IntervalDomain, MapDomain, VectorDomain};
 
 /// Utility to create a new [`Transformation`] with the given parameters, and 1-stability.
-fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Transformation<ID, OD, L1Sensitivity<i32>, L1Sensitivity<i32>> {
-    let input_metric = L1Sensitivity::new();
-    let output_metric = L1Sensitivity::new();
+fn new_1_stable_transformation<ID: Domain, OD: Domain>(input_domain: ID, output_domain: OD, function: impl Fn(&ID::Carrier) -> OD::Carrier + 'static) -> Transformation<ID, OD, HammingDistance, HammingDistance> {
+    let input_metric = HammingDistance::new();
+    let output_metric = HammingDistance::new();
     let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
 /// Constructs a [`Transformation`] of the identity function.
-pub fn make_identity<T: Clone>() -> Transformation<AllDomain<T>, AllDomain<T>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
+pub fn make_identity<T: Clone>() -> Transformation<AllDomain<T>, AllDomain<T>, HammingDistance, HammingDistance> {
     let input_domain = AllDomain::<T>::new();
     let output_domain = AllDomain::<T>::new();
     let function = |arg: &T| -> T {
@@ -46,7 +46,7 @@ fn split_lines(s: &str) -> Vec<&str> {
 }
 
 /// Constructs a [`Transformation`] that takes a `String` and splits it into a `Vect<String>` of its lines.
-pub fn make_split_lines() -> Transformation<AllDomain<String>, VectorDomain<AllDomain<String>>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
+pub fn make_split_lines() -> Transformation<AllDomain<String>, VectorDomain<AllDomain<String>>, HammingDistance, HammingDistance> {
     let input_domain = AllDomain::<String>::new();
     let output_domain = VectorDomain::new_all();
     let function = |arg: &String| -> Vec<String> {
@@ -66,7 +66,7 @@ fn parse_series<T>(col: &Vec<&str>, default_on_error: bool) -> Vec<T> where
     }
 }
 
-pub fn make_parse_series<T>(impute: bool) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<AllDomain<T>>, L1Sensitivity<i32>, L1Sensitivity<i32>> where
+pub fn make_parse_series<T>(impute: bool) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<AllDomain<T>>, HammingDistance, HammingDistance> where
     T: FromStr + Default, T::Err: Debug {
     let input_domain = VectorDomain::new_all();
     let output_domain = VectorDomain::new_all();
@@ -84,7 +84,7 @@ fn split_records<'a>(separator: &str, lines: &Vec<&'a str>) -> Vec<Vec<&'a str>>
     lines.into_iter().map(|e| split(e, separator)).collect()
 }
 
-pub fn make_split_records(separator: Option<&str>) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<VectorDomain<AllDomain<String>>>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
+pub fn make_split_records(separator: Option<&str>) -> Transformation<VectorDomain<AllDomain<String>>, VectorDomain<VectorDomain<AllDomain<String>>>, HammingDistance, HammingDistance> {
     let separator = separator.unwrap_or(",").to_owned();
     let input_domain = VectorDomain::new_all();
     let output_domain = VectorDomain::new(VectorDomain::new_all());
@@ -126,7 +126,7 @@ pub fn create_dataframe_domain() -> MapDomain<AllDomain<Data>> {
     MapDomain::new(AllDomain::new())
 }
 
-pub fn make_create_dataframe(col_count: usize) -> Transformation<VectorDomain<VectorDomain<AllDomain<String>>>, MapDomain<AllDomain<Data>>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
+pub fn make_create_dataframe(col_count: usize) -> Transformation<VectorDomain<VectorDomain<AllDomain<String>>>, MapDomain<AllDomain<Data>>, HammingDistance, HammingDistance> {
     let input_domain = VectorDomain::new(VectorDomain::new_all());
     let output_domain = create_dataframe_domain();
     let function = move |arg: &Vec<Vec<String>>| -> DataFrame {
@@ -143,7 +143,7 @@ fn split_dataframe<'a>(separator: &str, col_count: usize, s: &str) -> DataFrame 
     create_dataframe(col_count, &records)
 }
 
-pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transformation<AllDomain<String>, MapDomain<AllDomain<Data>>, L1Sensitivity<i32>, L1Sensitivity<i32>> {
+pub fn make_split_dataframe(separator: Option<&str>, col_count: usize) -> Transformation<AllDomain<String>, MapDomain<AllDomain<Data>>, HammingDistance, HammingDistance> {
     let separator = separator.unwrap_or(",").to_owned();
     let input_domain = AllDomain::new();
     let output_domain = create_dataframe_domain();
@@ -168,7 +168,7 @@ fn parse_column<T>(key: &str, impute: bool, df: &DataFrame) -> DataFrame where
     replace_col(key, &df, &col.into())
 }
 
-pub fn make_parse_column<T>(key: &str, impute: bool) -> Transformation<MapDomain<AllDomain<Data>>, MapDomain<AllDomain<Data>>, L1Sensitivity<i32>, L1Sensitivity<i32>> where
+pub fn make_parse_column<T>(key: &str, impute: bool) -> Transformation<MapDomain<AllDomain<Data>>, MapDomain<AllDomain<Data>>, HammingDistance, HammingDistance> where
     T: 'static + Element + Clone + PartialEq + FromStr + Default, T::Err: Debug {
     let key = key.to_owned();
     let input_domain = create_dataframe_domain();
@@ -179,7 +179,7 @@ pub fn make_parse_column<T>(key: &str, impute: bool) -> Transformation<MapDomain
     new_1_stable_transformation(input_domain, output_domain, function)
 }
 
-pub fn make_select_column<T>(key: &str) -> Transformation<MapDomain<AllDomain<Data>>, VectorDomain<AllDomain<T>>, L1Sensitivity<i32>, L1Sensitivity<i32>> where
+pub fn make_select_column<T>(key: &str) -> Transformation<MapDomain<AllDomain<Data>>, VectorDomain<AllDomain<T>>, HammingDistance, HammingDistance> where
     T: 'static + Element + Clone + PartialEq {
     let key = key.to_owned();
     let input_domain = create_dataframe_domain();
@@ -199,7 +199,7 @@ fn clamp<T: Copy + PartialOrd>(lower: T, upper: T, x: &Vec<T>) -> Vec<T> {
     x.into_iter().map(|e| clamp1(lower, upper, *e)).collect()
 }
 
-pub fn make_clamp<T>(lower: T, upper: T) -> Transformation<VectorDomain<AllDomain<T>>, VectorDomain<IntervalDomain<T>>, L1Sensitivity<i32>, L1Sensitivity<i32>> where
+pub fn make_clamp<T>(lower: T, upper: T) -> Transformation<VectorDomain<AllDomain<T>>, VectorDomain<IntervalDomain<T>>, HammingDistance, HammingDistance> where
     T: 'static + Copy + PartialOrd {
     let input_domain = VectorDomain::new_all();
     let output_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
@@ -209,9 +209,9 @@ pub fn make_clamp<T>(lower: T, upper: T) -> Transformation<VectorDomain<AllDomai
     new_1_stable_transformation(input_domain, output_domain, function)
 }
 
-pub fn make_bounded_sum_l1<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L1Sensitivity<i32>> where
-    T: 'static + Clone + PartialOrd + Sum<T> {
-    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+pub fn make_bounded_sum_l1<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L1Sensitivity<T>> where
+    T: 'static + Clone + PartialOrd + Sum<T> /* + Sub<Output=T> + Mul<Output=T> + From<i32> */ {
+    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower.clone()), Bound::Included(upper.clone())));
     let output_domain = AllDomain::new();
     let function = |arg: &Vec<T>| -> T {
         // FIXME: Can't make this work with references, have to clone.
@@ -220,13 +220,17 @@ pub fn make_bounded_sum_l1<T>(lower: T, upper: T) -> Transformation<VectorDomain
     };
     let input_metric = HammingDistance::new();
     let output_metric = L1Sensitivity::new();
-    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    let stability_relation = move |_d_in: &i32, _d_out: &T| {
+        // TODO: Sort out traits to make this work
+        // *d_out >= (upper.clone() - lower.clone()) * T::from(*d_in)
+        unimplemented!()
+    };
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
-pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L2Sensitivity<i32>> where
-    T: 'static + Clone + PartialOrd + Sum<T> {
-    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower), Bound::Included(upper)));
+pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain<IntervalDomain<T>>, AllDomain<T>, HammingDistance, L2Sensitivity<T>> where
+    T: 'static + Clone + PartialOrd + Sum<T> /* + Sub<Output=T> + Mul<Output=T> + From<i32> */ {
+    let input_domain = VectorDomain::new(IntervalDomain::new(Bound::Included(lower.clone()), Bound::Included(upper.clone())));
     let output_domain = AllDomain::new();
     let function = |arg: &Vec<T>| -> T {
         // FIXME: Can't make this work with references, have to clone.
@@ -237,7 +241,11 @@ pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain
     // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the conrete type
     let input_metric = HammingDistance::new();
     let output_metric = L2Sensitivity::new();
-    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    let stability_relation = move |_d_in: &i32, _d_out: &T| {
+        // TODO: Sort out traits to make this work
+        // *d_out >= (upper.clone() - lower.clone()) * T::from(*d_in)
+        unimplemented!()
+    };
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
