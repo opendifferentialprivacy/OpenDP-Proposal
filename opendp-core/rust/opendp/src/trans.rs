@@ -236,7 +236,11 @@ pub fn make_bounded_sum_l2<T>(lower: T, upper: T) -> Transformation<VectorDomain
     // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
     let input_metric = HammingDistance::new();
     let output_metric = L2Sensitivity::new();
-    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
+    let stability_relation = move |_d_in: &i32, _d_out: &T| {
+        // TODO: Sort out traits to make this work
+        // *d_out >= (upper.clone() - lower.clone()) * T::from(*d_in)
+        unimplemented!()
+    };
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
@@ -264,11 +268,7 @@ pub fn make_count_l2<T>() -> Transformation<VectorDomain<AllDomain<T>>, AllDomai
     // NOTE: can't make Q a type argument because you need to select a different stability relation depending on the concrete type
     let input_metric = HammingDistance::new();
     let output_metric = L2Sensitivity::new();
-    let stability_relation = move |_d_in: &i32, _d_out: &T| {
-        // TODO: Sort out traits to make this work
-        // *d_out >= (upper.clone() - lower.clone()) * T::from(*d_in)
-        unimplemented!()
-    };
+    let stability_relation = |d_in: &i32, d_out: &i32| *d_out >= *d_in;
     Transformation::new(input_domain, output_domain, function, input_metric, output_metric, stability_relation)
 }
 
